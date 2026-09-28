@@ -121,6 +121,37 @@ one; treating existence as proof of life leaves the socket dead until the
 file is removed by hand. On a refused connection, unlink the socket and
 relaunch.
 
+## Edit hook
+
+`--edit-hook` is a Claude Code `PostToolUse` hook. It reads the hook payload
+on standard input, and for an `Edit` or `Write` of a `.ghul` file inside a
+project - the nearest directory above the file holding a `.ghulproj` - sends
+the edit to that project's pool host and writes the file's diagnostics as
+the context the agent is shown:
+
+```json
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [{ "type": "command", "command": "dotnet ghul-mcp --edit-hook" }]
+      }
+    ]
+  }
+}
+```
+
+Only the edited file is reported. Errors with the same code and message are
+grouped at their first position with a count, errors come before
+everything else, and the list stops at twelve rows. A file with the same
+diagnostics as after its previous edit gets a one-line acknowledgement
+instead of the list again; that state is kept per project and file under
+`$XDG_CACHE_HOME/ghul-diagnostics-hook/`. A clean file, a file outside any
+project, a tool other than `Edit` or `Write`, and a host that does not answer
+within twenty seconds all produce no output, so the hook never stands in
+the way of an edit.
+
 ## Observability
 
 `pool_status` (an MCP tool, or `dotnet ghul-mcp --pool-status` from a shell)

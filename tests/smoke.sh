@@ -419,4 +419,48 @@ echo "$status_out" | grep -q "removed [0-9]* dead socket" || fail "pool status: 
 echo "$status_out" | grep -q "too new to remove" || fail "pool status: expected the new dead socket counted, got: $status_out"
 echo "$status_out" | grep -q "$new_socket" && fail "pool status: dead sockets should be counted, not listed, got: $status_out"
 
+# --- edit hook ------------------------------------------------------------
+
+# The agent edit hook, fed the PostToolUse payload an Edit produces. It
+# reports only what changed since the last edit of the file, keeping that
+# state under XDG_CACHE_HOME, so the run gets a cache of its own.
+cp "$tmp/main.pristine" "$tmp/src/main.ghul"
+hook_cache=$(mktemp -d)
+
+edit_hook() {
+    printf '{"tool_name":"%s","tool_input":{"file_path":"%s"}}' "$1" "$2" |
+        XDG_CACHE_HOME="$hook_cache" dotnet "$server" --edit-hook --pool-host-idle-timeout 300
+}
+
+hook_out=$(edit_hook Edit "$tmp/src/main.ghul")
+[ -z "$hook_out" ] || fail "edit hook: a clean file should report nothing, got: $hook_out"
+
+echo "this is not ghul" >> "$tmp/src/main.ghul"
+
+hook_out=$(edit_hook Edit "$tmp/src/main.ghul")
+echo "$hook_out" | grep -q '"hookEventName":"PostToolUse"' || fail "edit hook: expected PostToolUse output, got: $hook_out"
+echo "$hook_out" | grep -q 'diagnostics for src/main.ghul (compiler ' || fail "edit hook: expected the report header, got: $hook_out"
+echo "$hook_out" | grep -q 'src/main.ghul:[0-9]*:[0-9]*: error: ' || fail "edit hook: expected an error row, got: $hook_out"
+
+hook_out=$(edit_hook Write "$tmp/src/main.ghul")
+echo "$hook_out" | grep -q 'unchanged ([0-9]* known diagnostics' || fail "edit hook: a repeat should be acknowledged as unchanged, got: $hook_out"
+
+hook_out=$(edit_hook Read "$tmp/src/main.ghul")
+[ -z "$hook_out" ] || fail "edit hook: a tool other than Edit or Write should report nothing, got: $hook_out"
+
+cp "$tmp/main.pristine" "$tmp/src/main.ghul"
+
+hook_out=$(edit_hook Edit "$tmp/src/main.ghul")
+[ -z "$hook_out" ] || fail "edit hook: a repaired file should report nothing, got: $hook_out"
+
+# The repair cleared the recorded state, so the same breakage coming back
+# is reported in full rather than as unchanged.
+echo "this is not ghul" >> "$tmp/src/main.ghul"
+
+hook_out=$(edit_hook Edit "$tmp/src/main.ghul")
+echo "$hook_out" | grep -q 'src/main.ghul:[0-9]*:[0-9]*: error: ' || fail "edit hook: a breakage after a repair should be reported in full, got: $hook_out"
+
+cp "$tmp/main.pristine" "$tmp/src/main.ghul"
+rm -rf "$hook_cache"
+
 echo "smoke test passed"
