@@ -215,6 +215,41 @@ namespace Analyser is
             return state
         si
 
+        // The host's reply to an edit of `file`, a path relative to the
+        // project, spawning the host when none is listening. Null when no
+        // reply comes within `timeout_ms` - an analyser's first full sync of a
+        // large project can take longer - or the host cannot be reached. A
+        // reply the host marked as failed is returned for the caller to report.
+        edit_reply(project: string, file: string, idle_timeout_seconds: int, timeout_ms: int) -> JsonElement? static is
+            let socket_path = socket_path_for(project)
+
+            try
+                let connection mut = connect_with_handshake(socket_path)
+
+                if !connection? then
+                    spawn_host(socket_path, project, idle_timeout_seconds)
+                    connection = connect_with_handshake(socket_path)
+                fi
+
+                if let client = connection then
+                    try
+                        client.receive_timeout = timeout_ms
+
+                        write_line(client, request_json(EDIT_REQUEST(file)))
+
+                        if let reply = read_reply(client) then
+                            return parse(reply)
+                        fi
+                    finally
+                        client.close()
+                    yrt
+                fi
+            catch ex: Exception
+            yrt
+
+            return null
+        si
+
         // Ask a running host to exit. Best effort: a host too old to know
         // the op simply ignores it and dies on its idle timeout instead.
         shutdown_if_running(project: string) static is
@@ -542,6 +577,16 @@ namespace Analyser is
             op = "call"
             self.tool = tool
             self.arguments = arguments
+        si
+    si
+
+    class EDIT_REQUEST is
+        op: string public
+        file: string public
+
+        init(file: string) is
+            op = "edit"
+            self.file = file
         si
     si
 

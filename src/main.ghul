@@ -57,6 +57,7 @@ entry(arguments: string[]) is
     let query_log_path: string? mut = default_query_log_path()
     let pool_host_socket: string? mut = null
     let pool_status mut = false
+    let edit_hook mut = false
     let pool_idle_timeout mut = Analyser.POOL_HOST.DEFAULT_IDLE_TIMEOUT_SECONDS
 
     let index mut = 0
@@ -75,6 +76,9 @@ entry(arguments: string[]) is
             index = index + 1
         elif arg =~ "--pool-status" then
             pool_status = true
+            index = index + 1
+        elif arg =~ "--edit-hook" then
+            edit_hook = true
             index = index + 1
         elif arg =~ "--pool-host" /\ index + 1 < arguments.count then
             pool_host_socket = arguments[index + 1]
@@ -100,6 +104,12 @@ entry(arguments: string[]) is
     if pool_status then
         Std.out.write(Analyser.POOL_STATUS.render())
         Std.out.flush()
+
+        return
+    fi
+
+    if edit_hook then
+        Analyser.EDIT_HOOK.run(Std.in, Std.out, pool_idle_timeout)
 
         return
     fi
