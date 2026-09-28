@@ -1,0 +1,342 @@
+namespace Analyser is
+    use System.Exception
+
+    use System.Security.Cryptography.MD5
+    use System.Security.Cryptography.SHA256
+
+    use System.Text.Json.JsonDocument
+    use System.Text.Json.JsonElement
+    use System.Text.Json.JsonSerializer
+    use System.Text.Json.JsonValueKind
+    use System.Text.StringBuilder
+    use System.Text.UTF8Encoding
+
+    use Collections.LIST
+    use Collections.MAP
+
+    use IO.Directory
+    use IO.File
+    use IO.Path
+
+    use MCP.WIRE
+
+    use Ghul.Pipes
+
+    // One diagnostic the host reported for the edited file.
+    struct HOOK_DIAGNOSTIC(
+        severity: int public,
+        line: int public,
+        column: int public,
+        code: string public,
+        message: string public
+    )
+
+    // A diagnostic as it is shown: an error that recurs with the same code
+    // and message is one row, at its first position, with how often it was
+    // seen.
+    struct HOOK_ROW(diagnostic: HOOK_DIAGNOSTIC public, count: int public)
+
+    // What the hook reports for one edit, and the signature that decides
+    // next time whether anything has changed.
+    struct HOOK_REPORT(context: string? public, signature: string public)
+
+    // The report an agent's edit hook shows after a `.ghul` file is edited,
+    // built from the diagnostics the pool host returns for that file. Pure
+    // over its inputs, so the rules are testable without a host.
+    class EDIT_HOOK_REPORT is
+        MAX_ROWS: int static => 12
+
+        // One broken declaration comes back as parse errors around the root
+        // plus one "symbol not found" per use site, mostly restating a single
+        // cause. Exact duplicates are dropped, errors with the same code and
+        // message are grouped at their first position, and warnings stay
+        // positional, since the same warning text recurs legitimately on
+        // different lines. Errors sort ahead of everything else so the root
+        // cause survives the row cap.
+        group(diagnostics: Collections.List[HOOK_DIAGNOSTIC]) -> Collections.List[HOOK_ROW] static is
+            let seen = Collections.SET[HOOK_DIAGNOSTIC]()
+            let error_rows = LIST[HOOK_ROW]()
+            let error_index = MAP[(code: string, message: string), int]()
+            let other_rows = LIST[HOOK_ROW]()
+
+            for diagnostic in diagnostics do
+                if !seen.add(diagnostic) then
+                    continue
+                fi
+
+                if diagnostic.severity == 1 then
+                    let key = (code = diagnostic.code, message = diagnostic.message)
+                    let index mut = 0
+
+                    if error_index.try_get_value(key, index ref) then
+                        error_rows[index] = HOOK_ROW(error_rows[index].diagnostic, error_rows[index].count + 1)
+                    else
+                        error_index[key] = error_rows.count
+                        error_rows.add(HOOK_ROW(diagnostic, 1))
+                    fi
+                else
+                    other_rows.add(HOOK_ROW(diagnostic, 1))
+                fi
+            od
+
+            let result = LIST[HOOK_ROW](error_rows)
+
+            let sorted_others = other_rows |> sort_by(row => row.diagnostic.severity) |> collect()
+
+            result.add_range(sorted_others)
+
+            return result
+        si
+
+        // Ignores positions: the same set of messages at shifted lines is the
+        // same news.
+        signature(rows: Collections.List[HOOK_ROW]) -> string static is
+            let lines = LIST[string](
+                rows
+                    |> map(row => "{row.diagnostic.severity}|{row.diagnostic.code}|{row.diagnostic.message}")
+                    |> distinct())
+
+            lines.sort(System.StringComparer.ordinal)
+
+            let text = StringBuilder()
+
+            for line in lines do
+                text.append(line).append('\n')
+            od
+
+            return hex(SHA256.hash_data(UTF8Encoding(false).get_bytes(text.to_string())))
+        si
+
+        severity_name(severity: int) -> string static =>
+            case severity
+            when 1 then "error"
+            when 2 then "warning"
+            when 3 then "info"
+            else "hint"
+            esac
+
+        row_line(file: string, row: HOOK_ROW) -> string static is
+            let diagnostic = row.diagnostic
+            let code = if diagnostic.code.length > 0 then " [{diagnostic.code}]" else "" fi
+            let repeat = if row.count > 1 then ", seen {row.count}x" else "" fi
+
+            return "  {file}:{diagnostic.line}:{diagnostic.column}: {severity_name(diagnostic.severity)}: {diagnostic.message}{code}{repeat}"
+        si
+
+        // The report for `file`, given what the host said and the signature
+        // recorded after the previous edit of it. A host failure is always
+        // shown; diagnostics identical to last time are acknowledged in one
+        // line rather than repeated; a clean file reports nothing.
+        build(
+            file: string,
+            diagnostics: Collections.List[HOOK_DIAGNOSTIC],
+            host_error: string?,
+            compiler_version: string?,
+            previous_signature: string?
+        ) -> HOOK_REPORT static is
+            let rows = group(diagnostics)
+            let current = signature(rows)
+
+            let version_suffix = if compiler_version? then ", compiler {compiler_version}" else "" fi
+
+            if !host_error? /\ rows.count > 0 /\ current =~ previous_signature then
+                return HOOK_REPORT("ghūl diagnostics for {file}: unchanged ({rows.count} known diagnostics{version_suffix})", current)
+            fi
+
+            if !host_error? /\ rows.count == 0 then
+                return HOOK_REPORT(null, current)
+            fi
+
+            let context = StringBuilder()
+
+            if let error = host_error then
+                context.append("ghūl diagnostics host could not analyse {file}:\n  {error}\n")
+            fi
+
+            if rows.count > 0 then
+                context.append("ghūl diagnostics for {file} (compiler {compiler_version ?? "unknown"}):\n")
+
+                for row in rows |> take(MAX_ROWS) do
+                    context.append(row_line(file, row)).append('\n')
+                od
+
+                if rows.count > MAX_ROWS then
+                    context.append(
+                        "  ... and {rows.count - MAX_ROWS} more not shown - mcp__ghul__diagnostics or a build has the full list\n")
+                fi
+            fi
+
+            return HOOK_REPORT(context.to_string(), current)
+        si
+
+        hex(bytes: ubyte[]) -> string static is
+            let text = StringBuilder()
+
+            for b in bytes do
+                text.append("{b:x2}")
+            od
+
+            return text.to_string()
+        si
+    si
+
+    // `ghul-mcp --edit-hook`: an agent's PostToolUse hook. Reads the hook
+    // payload, and for an edit of a `.ghul` file inside a project, asks the
+    // project's pool host - the one the MCP tools use, started if need be -
+    // for the file's diagnostics and prints them as the context the agent
+    // is shown. Anything that does not apply, or cannot be answered in
+    // time, prints nothing: the hook must never get in the edit's way.
+    //
+    // Only the edited file is reported. The host's reply can carry rows for
+    // other files, but they are stale in both directions until those files
+    // are analysed again.
+    class EDIT_HOOK is
+        // Generous enough for an analyser's first full sync of a large
+        // project, which is exactly the reply worth waiting for; a warm edit
+        // answers well inside a second.
+        REPLY_TIMEOUT_MS: int static => 20000
+
+        run(input: IO.TextReader, output: IO.TextWriter, idle_timeout_seconds: int) static is
+            try
+                if let context = context_for(input.read_to_end(), idle_timeout_seconds) then
+                    output.write_line(JsonSerializer.serialize(HOOK_OUTPUT(context), WIRE.options))
+                    output.flush()
+                fi
+            catch ex: Exception
+            yrt
+        si
+
+        context_for(payload: string, idle_timeout_seconds: int) -> string? static is
+            let document = JsonDocument.parse(payload, _[System.Text.Json.JsonDocumentOptions])
+            let root = document.root_element
+
+            let tool = WIRE.try_get_string(root, "tool_name")
+
+            if !(tool =~ "Edit") /\ !(tool =~ "Write") then
+                return null
+            fi
+
+            let file_path = WIRE.try_get_string(WIRE.try_get_element(root, "tool_input"), "file_path")
+
+            if !file_path? \/ !file_path.ends_with(".ghul") \/ !File.exists(file_path) then
+                return null
+            fi
+
+            let project = project_of(file_path)
+
+            if !project? then
+                return null
+            fi
+
+            let relative = Path.get_relative_path(project, file_path)
+
+            let reply = HOST_CLIENT.edit_reply(project, relative, idle_timeout_seconds, REPLY_TIMEOUT_MS)
+
+            if !reply? then
+                return null
+            fi
+
+            let host_error =
+                if !WIRE.try_get_bool(reply, "ok") then
+                    WIRE.try_get_string(reply, "error") ?? "unspecified pool host error"
+                else
+                    null
+                fi
+
+            let state = state_file(project, relative)
+            let previous = if File.exists(state) then File.read_all_text(state) else null fi
+
+            let report =
+                EDIT_HOOK_REPORT.build(
+                    relative,
+                    diagnostics_of(reply),
+                    host_error,
+                    WIRE.try_get_string(reply, "compilerVersion"),
+                    previous)
+
+            // Recorded before deciding what to show: a file that went clean
+            // has to clear the state, or the same breakage coming back later
+            // would be taken for unchanged.
+            try
+                Directory.create_directory(Path.get_directory_name(state)!)
+                File.write_all_text(state, report.signature)
+            catch ex: Exception
+            yrt
+
+            return report.context
+        si
+
+        diagnostics_of(reply: JsonElement) -> Collections.List[HOOK_DIAGNOSTIC] static is
+            let result = LIST[HOOK_DIAGNOSTIC]()
+            let diagnostics = WIRE.try_get_element(reply, "diagnostics")
+
+            if diagnostics.value_kind != JsonValueKind.ARRAY then
+                return result
+            fi
+
+            for d in diagnostics.enumerate_array() do
+                result.add(
+                    HOOK_DIAGNOSTIC(
+                        WIRE.try_get_int(d, "severity"),
+                        WIRE.try_get_int(d, "startLine"),
+                        WIRE.try_get_int(d, "startColumn"),
+                        WIRE.try_get_string(d, "code") ?? "",
+                        WIRE.try_get_string(d, "message") ?? ""))
+            od
+
+            return result
+        si
+
+        // The directory holding the file's `.ghulproj`, walking up from the
+        // file: the same one-project-per-directory assumption the analyser
+        // session makes.
+        project_of(file_path: string) -> string? static is
+            let directory mut = Path.get_directory_name(Path.get_full_path(file_path))
+
+            while directory? do
+                if Directory.get_files(directory, "*.ghulproj").count > 0 then
+                    return directory
+                fi
+
+                directory = Path.get_directory_name(directory)
+            od
+
+            return null
+        si
+
+        // Per project and file, shared across sessions. The worst a stale or
+        // clobbered state file can do is one redundant or suppressed report,
+        // never a wrong diagnostic.
+        state_file(project: string, relative: string) -> string static is
+            let cache = System.Environment.get_environment_variable("XDG_CACHE_HOME")
+            let home = System.Environment.get_folder_path(System.Environment_SpecialFolder.USER_PROFILE)
+            let base = if cache? /\ cache.length > 0 then cache else Path.combine(home, ".cache") fi
+
+            return Path.combine(base, "ghul-diagnostics-hook", "{short_hash(project)}-{short_hash(relative)}")
+        si
+
+        short_hash(text: string) -> string static =>
+            EDIT_HOOK_REPORT.hex(MD5.hash_data(UTF8Encoding(false).get_bytes(text))).substring(0, 16)
+    si
+
+    // The PostToolUse output an agent is shown: a hook's plain standard
+    // output is recorded but never reaches the model, where this context
+    // does.
+    class HOOK_OUTPUT is
+        hook_specific_output: HOOK_CONTEXT public
+
+        init(context: string) is
+            hook_specific_output = HOOK_CONTEXT(context)
+        si
+    si
+
+    class HOOK_CONTEXT is
+        hook_event_name: string public
+        additional_context: string public
+
+        init(context: string) is
+            hook_event_name = "PostToolUse"
+            additional_context = context
+        si
+    si
+si
