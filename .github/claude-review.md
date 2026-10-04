@@ -38,6 +38,7 @@ confidently on it.
   matching compiler diagnostics.
 - **Blocking and timeouts.** A query that can hang without a timeout stalls the
   calling agent indefinitely.
+- **Doc comments on the stable surface.** For the shared doc-comment rule, the stable surface here is the MCP tools, their arguments and result shapes, and the analysis protocol the server speaks.
 
 ## Versioning
 
