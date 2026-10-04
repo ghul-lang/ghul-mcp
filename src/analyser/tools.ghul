@@ -32,7 +32,7 @@ namespace Analyser is
     // server would silently answer every query against `main`.
     class ANALYSER_TOOLS is
         PROJECT_PROPERTY: string static =>
-            "\"project\": {{\"type\": \"string\", \"description\": \"absolute path to the ghūl project directory (the one holding the .ghulproj). Optional - defaults to the server's --default-project.\"}}"
+            "\"project\": {{\"type\": \"string\", \"description\": \"absolute path to the ghūl project directory (the one holding the .ghulproj or ghul-project.json). Optional - defaults to the server's --default-project.\"}}"
 
         POSITION_SCHEMA: string static =>
             "{{\"type\": \"object\", \"properties\": {{"

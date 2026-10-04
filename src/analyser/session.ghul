@@ -447,6 +447,13 @@ namespace Analyser is
         // whose current fingerprint differs from its spawn-time one gets
         // recycled rather than kept answering on a moved compiler.
         compute_compiler_fingerprint() -> string is
+            // ghul names a manifest project's compiler from the manifest and
+            // the lockfile, so an edit to either can change it. start() never
+            // uses the override for one, so neither does this.
+            if MANIFEST_PROJECT.is_manifest_project(_project_directory) then
+                return "ghul-project {_read_or_none(MANIFEST_PROJECT.MANIFEST)} {_read_or_none(MANIFEST_PROJECT.LOCKFILE)}"
+            fi
+
             // Re-resolve rather than read the field cached at spawn time:
             // the drift check exists precisely to notice when the property
             // now points somewhere else, and a cached path would make a
@@ -488,6 +495,14 @@ namespace Analyser is
             od
 
             return "none"
+        si
+
+        _read_or_none(name: string) -> string is
+            try
+                return File.read_all_text(Path.combine(_project_directory, name))
+            catch ex: Exception
+                return "none"
+            yrt
         si
 
         // Ask MSBuild to write the project's fully-resolved compiler flags to
@@ -826,6 +841,47 @@ namespace Analyser is
             Std.error.write_line(err)
         si
 
+        // Has the ghul tool write a manifest project's response file and
+        // source globs, for the first target the manifest lists when it
+        // lists several. Throws with the reason when it cannot: unlike a
+        // .ghulproj there is no older format to fall back to.
+        generate_manifest_response_file(path: string, source_globs_path: string) is
+            if File.exists(path) then
+                File.delete(path)
+            fi
+
+            let arguments = StringBuilder()
+
+            arguments.append("project response-file --output \"{path}\" --source-globs \"{source_globs_path}\"")
+
+            if let target: string = MANIFEST_PROJECT.target_to_analyse(_project_directory) then
+                arguments.append(" --target {target}")
+            fi
+
+            MANIFEST_PROJECT.run_ghul(_project_directory, arguments.to_string())
+
+            if !File.exists(path) then
+                throw Exception("ghul wrote no response file for {_project_directory}")
+            fi
+        si
+
+        // The command that runs the compiler a manifest project builds with,
+        // as ghul names it. Asked at every spawn rather than kept: with no
+        // compiler in the manifest it is the newest installed.
+        manifest_compiler() -> LIST[string] is
+            let output = MANIFEST_PROJECT.run_ghul(_project_directory, "project compiler")
+
+            for line in output.split(['\n']) do
+                let trimmed = line.trim()
+
+                if trimmed.length > 0 then
+                    return _tokenize_quoted(trimmed)
+                fi
+            od
+
+            throw Exception("ghul named no compiler for {_project_directory}")
+        si
+
         // Read the build's response file into the analyser's argument list.
         // Each line is one flag with its argument, so a line is tokenized
         // whole and never read across lines.
@@ -933,12 +989,22 @@ namespace Analyser is
             let project_response_file = Path.combine(temp_directory(), "project.rsp")
             let source_globs_path = Path.combine(temp_directory(), "source-globs.txt")
 
-            generate_response_file(project_response_file, source_globs_path)
+            // A ghul-project.json project is resolved by the ghul tool, which
+            // writes the same two files a .ghulproj build does and names the
+            // compiler; none of the .NET build steps apply to it.
+            let is_manifest_project = MANIFEST_PROJECT.is_manifest_project(_project_directory)
 
-            if File.exists(project_response_file) then
+            if is_manifest_project then
+                generate_manifest_response_file(project_response_file, source_globs_path)
                 read_response_file(project_response_file, arguments)
             else
-                read_json_configuration(arguments)
+                generate_response_file(project_response_file, source_globs_path)
+
+                if File.exists(project_response_file) then
+                    read_response_file(project_response_file, arguments)
+                else
+                    read_json_configuration(arguments)
+                fi
             fi
 
             arguments.add("-A")
@@ -970,8 +1036,23 @@ namespace Analyser is
                 fi
             fi
 
-            start_info.file_name = "dotnet"
-            start_info.arguments = "{program} @\"{response_file}\""
+            if is_manifest_project then
+                let compiler = manifest_compiler()
+
+                start_info.file_name = compiler[0]
+
+                let rest = StringBuilder()
+
+                for index in 1..compiler.count do
+                    rest.append("\"{compiler[index]}\" ")
+                od
+
+                start_info.arguments = "{rest}@\"{response_file}\""
+            else
+                start_info.file_name = "dotnet"
+                start_info.arguments = "{program} @\"{response_file}\""
+            fi
+
             start_info.working_directory = _project_directory
 
             start_info.use_shell_execute = false

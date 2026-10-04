@@ -287,14 +287,17 @@ namespace Analyser is
             return result
         si
 
-        // The directory holding the file's `.ghulproj`, walking up from the
-        // file: the same one-project-per-directory assumption the analyser
-        // session makes.
+        // The directory holding the file's `.ghulproj` or `ghul-project.json`
+        // manifest, walking up from the file: the same
+        // one-project-per-directory assumption the analyser session makes.
         project_of(file_path: string) -> string? static is
             let directory mut = Path.get_directory_name(Path.get_full_path(file_path))
 
             while directory? do
-                if Directory.get_files(directory, "*.ghulproj").count > 0 then
+                if
+                    Directory.get_files(directory, "*.ghulproj").count > 0 \/
+                    File.exists(Path.combine(directory, MANIFEST_PROJECT.MANIFEST))
+                then
                     return directory
                 fi
 

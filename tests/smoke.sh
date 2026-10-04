@@ -82,8 +82,33 @@ cp -r src ghul-mcp.ghulproj Directory.Build.props Directory.Packages.props .conf
 (cd "$tmp" && dotnet tool restore >/dev/null)
 cp "$tmp/src/main.ghul" "$tmp/main.pristine"
 
+# A stand-in for the ghul command-line tool, which CI does not have, for
+# the manifest project section below. It answers only `ghul project`, so
+# having it on the server's PATH changes nothing else.
+stub_bin="$tmp/stub-bin"
+mkdir -p "$stub_bin"
+cat > "$stub_bin/ghul" <<'STUB'
+#!/bin/sh
+if [ "$1 $2" = "project response-file" ] ; then
+    shift 2
+    while [ $# -gt 0 ] ; do
+        case "$1" in
+            --output) : > "$2"; shift 2 ;;
+            --source-globs) echo 'src/**/*.ghul' > "$2"; shift 2 ;;
+            *) shift ;;
+        esac
+    done
+elif [ "$1 $2" = "project compiler" ] ; then
+    echo 'dotnet ghul-compiler'
+else
+    echo "unexpected: $*" >&2
+    exit 1
+fi
+STUB
+chmod +x "$stub_bin/ghul"
+
 mkfifo "$fifo"
-dotnet "$server" --default-project "$tmp" --pool-host-idle-timeout 300 --query-log "$tmp/query-log.jsonl" <"$fifo" >"$responses" &
+PATH="$stub_bin:$PATH" dotnet "$server" --default-project "$tmp" --pool-host-idle-timeout 300 --query-log "$tmp/query-log.jsonl" <"$fifo" >"$responses" &
 server_pid=$!
 exec 3>"$fifo"
 
@@ -327,6 +352,23 @@ send "{\"jsonrpc\":\"2.0\",\"id\":43,\"method\":\"tools/call\",\"params\":{\"nam
 await 43
 response 43 | grep -q "no warm session" || fail "release_session: expected miss after release"
 
+# --- manifest project -----------------------------------------------------
+
+# A ghul-project.json project has no .ghulproj: the ghul tool writes its
+# response file and source globs and names its compiler. The stub above
+# stands in for it, writing what it writes for a .NET-target project with no
+# dependencies.
+manifest_project="$tmp/manifest-project"
+mkdir -p "$manifest_project/src"
+cp -r .config "$manifest_project/"
+(cd "$manifest_project" && dotnet tool restore >/dev/null)
+echo '{ "name": "manifest-project", "sources": ["src/**/*.ghul"] }' > "$manifest_project/ghul-project.json"
+printf 'entry() is\n    IO.Std.write_line(not_declared_anywhere);\nsi\n' > "$manifest_project/src/broken.ghul"
+
+send "{\"jsonrpc\":\"2.0\",\"id\":60,\"method\":\"tools/call\",\"params\":{\"name\":\"diagnostics\",\"arguments\":{\"project\":\"$manifest_project\"}}}"
+await 60
+response 60 | grep -q 'not_declared_anywhere' || fail "manifest project: expected the source error from diagnostics, got: $(response 60)"
+
 exec 3>&-
 wait "$server_pid" 2>/dev/null || true
 server_pid=""
@@ -461,6 +503,14 @@ hook_out=$(edit_hook Edit "$tmp/src/main.ghul")
 echo "$hook_out" | grep -q 'src/main.ghul:[0-9]*:[0-9]*: error: ' || fail "edit hook: a breakage after a repair should be reported in full, got: $hook_out"
 
 cp "$tmp/main.pristine" "$tmp/src/main.ghul"
+
+# --- manifest project, through the edit hook ------------------------------
+
+# The edit hook finds the project by its manifest when walking up from the
+# edited file.
+hook_out=$(PATH="$stub_bin:$PATH" edit_hook Edit "$manifest_project/src/broken.ghul")
+echo "$hook_out" | grep -q 'not_declared_anywhere' || fail "manifest project: expected the edit hook to report the source error, got: $hook_out"
+
 rm -rf "$hook_cache"
 
 echo "smoke test passed"

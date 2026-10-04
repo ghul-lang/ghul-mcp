@@ -1,0 +1,111 @@
+namespace Analyser is
+    use System.Exception
+    use System.Diagnostics.Process
+    use System.Diagnostics.ProcessStartInfo
+    use System.Text.Json.JsonDocument
+    use System.Text.Json.JsonDocumentOptions
+    use System.Text.Json.JsonCommentHandling
+    use System.Text.Json.JsonValueKind
+
+    use IO.Directory
+    use IO.File
+    use IO.Path
+
+    /// A project described by a `ghul-project.json` manifest rather than a
+    /// `.ghulproj`. The `ghul` command-line tool reads the manifest, writes the
+    /// response file and source globs a `.ghulproj` build would, and names
+    /// the compiler.
+    class MANIFEST_PROJECT is
+        /// The manifest's file name.
+        MANIFEST: string static => "ghul-project.json"
+
+        /// The lockfile's file name.
+        LOCKFILE: string static => "ghul-project.lock.json"
+
+        init() is si
+
+        /// Whether a directory is a manifest project: it holds a manifest and
+        /// no `.ghulproj`. A directory holding both is a `.ghulproj` project.
+        ///
+        /// - directory: the directory to look in
+        is_manifest_project(directory: string) -> bool static =>
+            File.exists(Path.combine(directory, MANIFEST)) /\
+            Directory.get_files(directory, "*.ghulproj").count == 0
+
+        /// The target to analyse for: null when the manifest lists one
+        /// target or none, which `ghul` chooses for itself, otherwise the
+        /// first listed. Null too when the manifest cannot be read, since
+        /// `ghul` reports that better.
+        ///
+        /// - directory: the directory holding the manifest
+        target_to_analyse(directory: string) -> string? static is
+            try
+                let options: JsonDocumentOptions mut = _
+
+                options.comment_handling = JsonCommentHandling.SKIP
+                options.allow_trailing_commas = true
+
+                let use document = JsonDocument.parse(File.read_all_text(Path.combine(directory, MANIFEST)), options)
+
+                // Throws for a manifest that is not an object or names no
+                // targets, which are the cases answered null below
+                let targets = document.root_element.get_property("targets")
+
+                if targets.value_kind == JsonValueKind.ARRAY /\ targets.get_array_length() > 1 then
+                    let first = targets[0]
+
+                    if first.value_kind == JsonValueKind.STRING then
+                        return first.get_string()
+                    fi
+                fi
+            catch ex: Exception
+            yrt
+
+            return null
+        si
+
+        /// Runs `ghul` with the given arguments in a directory, and answers
+        /// its standard output. Throws with a message for a person when
+        /// `ghul` is not installed or fails.
+        ///
+        /// - directory: the project directory to run it in
+        /// - arguments: the arguments, already quoted
+        run_ghul(directory: string, arguments: string) -> string static is
+            let start_info = ProcessStartInfo()
+
+            start_info.file_name = "ghul"
+            start_info.arguments = arguments
+            start_info.working_directory = directory
+            start_info.use_shell_execute = false
+            start_info.redirect_standard_output = true
+            start_info.redirect_standard_error = true
+
+            let process = _start(start_info)
+
+            if !process? then
+                throw Exception("could not start the ghul command-line tool in {directory}")
+            fi
+
+            let out = process.standard_output.read_to_end()
+            let err = process.standard_error.read_to_end()
+
+            if !process.wait_for_exit(120000) then
+                throw Exception("timed out running ghul {arguments} in {directory}")
+            fi
+
+            if process.exit_code != 0 then
+                throw Exception("ghul {arguments} failed in {directory}: {err.trim()}")
+            fi
+
+            return out
+        si
+
+        _start(start_info: ProcessStartInfo) -> Process? static is
+            try
+                return Process.start(start_info)
+            catch ex: System.ComponentModel.Win32Exception
+                throw Exception("the ghul command-line tool is needed to open a {MANIFEST} project, and was not found")
+            yrt
+        si
+    si
+si

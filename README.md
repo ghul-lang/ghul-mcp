@@ -125,7 +125,8 @@ relaunch.
 
 `--edit-hook` is a Claude Code `PostToolUse` hook. It reads the hook payload
 on standard input, and for an `Edit` or `Write` of a `.ghul` file inside a
-project - the nearest directory above the file holding a `.ghulproj` - sends
+project - the nearest directory above the file holding a `.ghulproj` or a
+`ghul-project.json` manifest - sends
 the edit to that project's pool host and writes the file's diagnostics as
 the context the agent is shown:
 
