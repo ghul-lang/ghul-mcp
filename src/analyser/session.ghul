@@ -447,6 +447,13 @@ namespace Analyser is
         // whose current fingerprint differs from its spawn-time one gets
         // recycled rather than kept answering on a moved compiler.
         compute_compiler_fingerprint() -> string is
+            // ghul names a manifest project's compiler from the manifest and
+            // the lockfile, so an edit to either can change it. start() never
+            // uses the override for one, so neither does this.
+            if MANIFEST_PROJECT.is_manifest_project(_project_directory) then
+                return "ghul-project {_read_or_none(MANIFEST_PROJECT.MANIFEST)} {_read_or_none(MANIFEST_PROJECT.LOCKFILE)}"
+            fi
+
             // Re-resolve rather than read the field cached at spawn time:
             // the drift check exists precisely to notice when the property
             // now points somewhere else, and a cached path would make a
@@ -463,12 +470,6 @@ namespace Analyser is
                 catch ex: Exception
                     return "dll-unreadable {path}"
                 yrt
-            fi
-
-            // ghul names a manifest project's compiler from the manifest and
-            // the lockfile, so an edit to either can change it
-            if MANIFEST_PROJECT.is_manifest_project(_project_directory) then
-                return "ghul-project {_read_or_none(MANIFEST_PROJECT.MANIFEST)} {_read_or_none(MANIFEST_PROJECT.LOCKFILE)}"
             fi
 
             let dir mut = _project_directory
