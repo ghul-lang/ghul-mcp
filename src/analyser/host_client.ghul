@@ -413,6 +413,8 @@ namespace Analyser is
 
             let start_info = ProcessStartInfo()
 
+            // The host is the one running this process, so a pool host starts
+            // where the front end did whatever PATH holds.
             // The variable parts - the assembly, socket and project paths -
             // travel as positional arguments ($0..$4), never interpolated
             // into the script text, so a project path containing shell
@@ -425,13 +427,14 @@ namespace Analyser is
             start_info.file_name = "/bin/sh"
             for argument in [
                 "-c",
-                "exec setsid dotnet \"$0\" --pool-host \"$1\" --project \"$2\" "
+                "exec setsid \"$5\" \"$0\" --pool-host \"$1\" --project \"$2\" "
                 "--pool-host-idle-timeout \"$3\" >>\"$4\" 2>&1",
                 assembly_location,
                 socket_path,
                 project,
                 "{idle_timeout_seconds}",
-                log_path
+                log_path,
+                _dotnet_host()
             ] do
                 start_info.argument_list.add(argument)
             od
@@ -458,6 +461,20 @@ namespace Analyser is
 
                 System.Threading.Thread.sleep(CONNECT_POLL_MS)
             od
+        si
+
+        // The dotnet host running this process, or `dotnet` where this process
+        // was not started by one.
+        _dotnet_host() -> string static is
+            if let path: string = System.Environment.process_path then
+                let name = IO.Path.get_file_name_without_extension(path)
+
+                if name =~ "dotnet" then
+                    return path
+                fi
+            fi
+
+            return "dotnet"
         si
 
         write_line(client: Socket, line: string) static is
