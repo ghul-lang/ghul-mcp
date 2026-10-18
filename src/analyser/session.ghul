@@ -1121,7 +1121,7 @@ namespace Analyser is
         // INLAY_HINTS query the `inlays` tool depends on, ghul#1642; any
         // analyser predating compiler_version on the LISTEN frame, ghul#1634
         // / 19.13.0, is "too old to negotiate" and refused.)
-        MIN_COMPILER_VERSION: string static => "59.1.1"
+        MIN_COMPILER_VERSION: string static => "66.0.0"
 
         _reject_if_compiler_too_old(reported: string?) is
             if !reported? \/ reported.length == 0 then
@@ -1558,7 +1558,7 @@ namespace Analyser is
                 throw Exception("analyser process is not running")
             fi
 
-            process.standard_input.write(JsonSerializer.serialize[Request](request, _options))
+            process.standard_input.write(Json.write(Json.to_json(request)))
             process.standard_input.write("\n")
             process.standard_input.flush()
         si
@@ -1641,7 +1641,7 @@ namespace Analyser is
                 fi
             od
 
-            let response = JsonSerializer.deserialize[Response](buffer.to_string(), _options)
+            let response = cast Response?(Json.from_json(Json.parse(buffer.to_string()), typeof Response))
 
             if !response? then
                 throw Exception("analyser returned null deserialising response: {buffer}")
