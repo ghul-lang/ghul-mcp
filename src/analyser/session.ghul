@@ -33,7 +33,7 @@ namespace Analyser is
     // Shape of .ghul-options.json, written by the ghul.runtime 14.1.0+
     // GenerateGhulOptionsJson target: the fully-resolved compiler flags the
     // build itself would pass, as one whitespace-separated (quote-aware)
-    // string - conditions applied, properties evaluated. See degory/ghul#2090.
+    // string - conditions applied, properties evaluated. See ghul-lang/ghul#2090.
     class GHUL_OPTIONS_FILE is
         options: string public
 
@@ -507,7 +507,7 @@ namespace Analyser is
 
         // Ask MSBuild to write the project's fully-resolved compiler flags to
         // .ghul-options.json; the target ships in ghul.runtime 14.1.0+'s
-        // build targets (degory/ghul#2090). Best-effort and silent on
+        // build targets (ghul-lang/ghul#2090). Best-effort and silent on
         // failure: a project still pinned to an older ghul.runtime has no
         // such target, and that is the normal case rather than a problem to
         // report - resolve_compiler_options falls back to the hand-rolled
@@ -790,7 +790,7 @@ namespace Analyser is
 
         // Ask MSBuild to resolve the project's compiler options and reference
         // assemblies into a response file. The target ships in ghul.runtime
-        // 14.3.0+'s build targets (degory/ghul#2132) and supersedes the two
+        // 14.3.0+'s build targets (ghul-lang/ghul#2132) and supersedes the two
         // JSON targets, which published the same two halves in a format
         // nothing else speaks.
         //
