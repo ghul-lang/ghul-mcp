@@ -1,8 +1,8 @@
 # ghul-mcp
 
-[![CI](https://img.shields.io/github/actions/workflow/status/degory/ghul-mcp/ci.yml?branch=main)](https://github.com/degory/ghul-mcp/actions/workflows/ci.yml?query=branch%3Amain)
+[![CI](https://img.shields.io/github/actions/workflow/status/ghul-lang/ghul-mcp/ci.yml?branch=main)](https://github.com/ghul-lang/ghul-mcp/actions/workflows/ci.yml?query=branch%3Amain)
 [![NuGet version (ghul.mcp)](https://img.shields.io/nuget/v/ghul.mcp.svg)](https://www.nuget.org/packages/ghul.mcp/)
-[![License](https://img.shields.io/github/license/degory/ghul-mcp)](https://github.com/degory/ghul-mcp/blob/main/LICENSE)
+[![License](https://img.shields.io/github/license/ghul-lang/ghul-mcp)](https://github.com/ghul-lang/ghul-mcp/blob/main/LICENSE)
 [![ghūl](https://img.shields.io/badge/gh%C5%ABl-100%25!-information)](https://ghul.dev)
 
 MCP (Model Context Protocol) server for the [ghūl programming
@@ -202,4 +202,4 @@ dotnet tool restore
 
 ## Issues
 
-[View open issues](https://github.com/degory/ghul/issues?q=is%3Aopen+is%3Aissue+label%3Aghul-mcp) or [raise a new one](https://github.com/degory/ghul/issues/new?labels=ghul-mcp).
+[View open issues](https://github.com/ghul-lang/ghul/issues?q=is%3Aopen+is%3Aissue+label%3Aghul-mcp) or [raise a new one](https://github.com/ghul-lang/ghul/issues/new?labels=ghul-mcp).
