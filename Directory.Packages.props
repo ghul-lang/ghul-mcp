@@ -1,6 +1,6 @@
 <Project>
   <ItemGroup>
-    <PackageVersion Include="ghul.runtime" Version="29.2.1" />
-    <PackageVersion Include="ghul.analysis.protocol" Version="66.18.1" />
+    <PackageVersion Include="ghul.runtime" Version="31.0.3" />
+    <PackageVersion Include="ghul.analysis.protocol" Version="66.19.3" />
   </ItemGroup>
 </Project>
