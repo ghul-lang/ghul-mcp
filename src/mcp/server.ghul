@@ -177,7 +177,7 @@ namespace MCP is
     si
 
     class CALL_RESULT is
-        content: CONTENT_ITEM[] public
+        content: ARRAY[CONTENT_ITEM] public
         is_error: bool public
 
         init(text: string, is_error: bool) is

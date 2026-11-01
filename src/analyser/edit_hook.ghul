@@ -169,7 +169,7 @@ namespace Analyser is
             return HOOK_REPORT(context.to_string(), current)
         si
 
-        hex(bytes: ubyte[]) -> string static is
+        hex(bytes: ARRAY[ubyte]) -> string static is
             let text = StringBuilder()
 
             for b in bytes do

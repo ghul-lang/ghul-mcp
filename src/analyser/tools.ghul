@@ -1111,7 +1111,7 @@ namespace Analyser is
         // stub-loaded). Ordered roughly by hit rate against the compiler
         // and its siblings. Adding more is cheap - each probe is a single
         // describe_type request.
-        COMMON_NAMESPACES: string[] static => [
+        COMMON_NAMESPACES: ARRAY[string] static => [
             "System",
             "System.Collections.Generic",
             "System.Text",
