@@ -49,7 +49,7 @@ default_query_log_path() -> string? is
     return null
 si
 
-entry(arguments: string[]) is
+entry(arguments: ARRAY[string]) is
     Std.input_encoding = System.Text.UTF8Encoding(false)
     Std.output_encoding = System.Text.UTF8Encoding(false)
 
