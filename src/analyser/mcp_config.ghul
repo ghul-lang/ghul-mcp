@@ -1,0 +1,194 @@
+namespace Analyser is
+    use System.Exception
+    use System.Text.StringBuilder
+    use System.Text.Json.JsonDocument
+    use System.Text.Json.JsonDocumentOptions
+    use System.Text.Json.JsonCommentHandling
+    use System.Text.Json.JsonValueKind
+
+    use Collections.LIST
+
+    use Ghul.Pipes
+
+    use IO.File
+    use IO.Path
+
+    /// How ghul-mcp opens the projects under a directory, read from the
+    /// nearest `.ghul-mcp.json` at or above the project directory. With no
+    /// file, a project with a `.ghulproj` is opened through it and analysed
+    /// by its pinned `ghul.compiler` tool, and a manifest project is opened
+    /// through the `ghul` command-line tool, which chooses the compiler.
+    ///
+    /// The file is a JSON object with any of these keys:
+    ///
+    /// - `project-file`: `"manifest"` to open a directory holding both a
+    ///   `ghul-project.json` and a `.ghulproj` through the manifest, or
+    ///   `"ghulproj"` (the default) to open it through the `.ghulproj`
+    /// - `compiler-host`: the host to run the compiler with, passed to
+    ///   `ghul project` as `--compiler-host`: `llvm`, `wasm` or `dotnet`
+    /// - `compiler`: the compiler command line, passed to `ghul project` as
+    ///   `--compiler`
+    ///
+    /// The last two apply only to a project opened through its manifest.
+    class MCP_CONFIG is
+        /// The file's name.
+        FILE_NAME: string static => ".ghul-mcp.json"
+
+        /// The keys the file may hold.
+        KEYS: string[] static => ["project-file", "compiler-host", "compiler"]
+
+        /// The file read, or null where there is none.
+        path: string?
+
+        /// The file's text, or null where there is none.
+        text: string?
+
+        /// Whether a directory holding both a manifest and a `.ghulproj` is
+        /// opened through the manifest.
+        prefer_manifest: bool
+
+        /// The host `ghul project` is asked to run the compiler with, or
+        /// null to let it choose.
+        compiler_host: string?
+
+        /// The compiler command line `ghul project` is given, or null to let
+        /// it choose.
+        compiler: string?
+
+        init() is
+            path = null
+            text = null
+            prefer_manifest = false
+            compiler_host = null
+            compiler = null
+        si
+
+        /// The configuration for a project directory: the nearest file at
+        /// or above it, or the defaults where there is none. Throws, naming
+        /// the file, where it is not a JSON object of the keys above with
+        /// string values.
+        ///
+        /// - directory: the project directory
+        load(directory: string) -> MCP_CONFIG static is
+            let result = MCP_CONFIG()
+
+            if let found = _find(Path.get_full_path(directory)) then
+                result._read(found)
+            fi
+
+            return result
+        si
+
+        _find(directory: string) -> string? static is
+            let current: string? mut = directory
+
+            while current? do
+                let candidate = Path.combine(current, FILE_NAME)
+
+                if File.exists(candidate) then
+                    return candidate
+                fi
+
+                current = Path.get_directory_name(current)
+            od
+
+            return null
+        si
+
+        _read(file: string) is
+            path = file
+
+            let content = File.read_all_text(file)
+
+            text = content
+
+            let options: JsonDocumentOptions mut = _
+
+            options.comment_handling = JsonCommentHandling.SKIP
+            options.allow_trailing_commas = true
+
+            let use document = _parse(file, content, options)
+
+            let root = document.root_element
+
+            if root.value_kind != JsonValueKind.OBJECT then
+                throw Exception("{file}: expected a JSON object")
+            fi
+
+            let unknown = LIST[string]()
+
+            for property in root.enumerate_object() do
+                if !_is_key(property.name) then
+                    unknown.add(property.name)
+                fi
+            od
+
+            if unknown.count > 0 then
+                let keys = if unknown.count == 1 then "key" else "keys" fi
+
+                throw Exception("{file}: unknown {keys} {unknown |> join(", ")}; the keys are {KEYS |> join(", ")}")
+            fi
+
+            for property in root.enumerate_object() do
+                let value = property.value
+
+                if value.value_kind != JsonValueKind.STRING then
+                    throw Exception("{file}: {property.name} must be a string")
+                fi
+
+                let s = value.get_string()!
+
+                if property.name =~ "project-file" then
+                    if s =~ "manifest" then
+                        prefer_manifest = true
+                    elif s =~ "ghulproj" then
+                        prefer_manifest = false
+                    else
+                        throw Exception("{file}: project-file must be \"manifest\" or \"ghulproj\", not \"{s}\"")
+                    fi
+                elif property.name =~ "compiler-host" then
+                    compiler_host = s
+                else
+                    compiler = s
+                fi
+            od
+        si
+
+        _is_key(name: string) -> bool static is
+            for key in KEYS do
+                if key =~ name then
+                    return true
+                fi
+            od
+
+            return false
+        si
+
+        _parse(file: string, content: string, options: JsonDocumentOptions) -> JsonDocument static is
+            try
+                return JsonDocument.parse(content, options)
+            catch ex: System.Text.Json.JsonException
+                throw Exception("{file}: not valid JSON: {ex.message}")
+            yrt
+        si
+
+        /// The arguments that pass the chosen host and compiler to
+        /// `ghul project`, quoted for a command line, with a leading space,
+        /// or empty where neither is chosen.
+        tool_arguments: string is
+            let result = StringBuilder()
+
+            if let host = compiler_host then
+                result.append(" --compiler-host \"{host}\"")
+            fi
+
+            if let command = compiler then
+                let quoted = command.replace("\"", "\\\"")
+
+                result.append(" --compiler \"{quoted}\"")
+            fi
+
+            return result.to_string()
+        si
+    si
+si
