@@ -235,6 +235,9 @@ send '{"jsonrpc":"2.0","id":25,"method":"tools/call","params":{"name":"pool_stat
 await 25
 response 25 | grep -q "$tmp" || fail "pool_status: expected the default project in the sweep"
 response 25 | grep -q "ghul.compiler " || fail "pool_status: expected a compiler version in the sweep"
+# The analyser's memory counts the compiler the dotnet launcher runs, not
+# the launcher alone, which is tens of MB.
+response 25 | grep -qE 'sources, [0-9]{3,}(\.[0-9]+)? MB|sources, [0-9.]+ GB' || fail "pool_status: expected the analyser's memory to count the compiler process, got: $(response 25)"
 response 25 | grep -q "requests" || fail "pool_status: expected request counters"
 response 25 | grep -q "analyser:" || fail "pool_status: expected an analyser line"
 
@@ -341,6 +344,15 @@ response 35 | grep -q 'not analysed by the dotnet compiler' || fail "excluded fi
 send "{\"jsonrpc\":\"2.0\",\"id\":36,\"method\":\"tools/call\",\"params\":{\"name\":\"hover\",\"arguments\":{\"project\":\"$hints_dir\",\"file\":\"src/test.ghul\",\"line\":1,\"column\":1}}}"
 await 36
 response 36 | grep -q 'not analysed' && fail "excluded file: an included file must not be reported as excluded, got: $(response 36)"
+
+# Once the @@IF goes, the file is analysed again and no longer reported.
+printf 'only_on_wasm() -> int => 1\n' > "$hints_dir/src/wasm_only.ghul"
+
+send "{\"jsonrpc\":\"2.0\",\"id\":37,\"method\":\"tools/call\",\"params\":{\"name\":\"hover\",\"arguments\":{\"project\":\"$hints_dir\",\"file\":\"src/wasm_only.ghul\",\"line\":1,\"column\":1}}}"
+await 37
+response 37 | grep -q 'not analysed' && fail "excluded file: a file whose @@IF was removed must not stay excluded, got: $(response 37)"
+
+printf '@@IF.wasm()\n\nonly_on_wasm() -> int => not_declared_anywhere\n' > "$hints_dir/src/wasm_only.ghul"
 
 # --- part 5: pool operations --------------------------------------------
 # Verify the pool exposes per-session detail, that heap_check returns

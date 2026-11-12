@@ -163,7 +163,36 @@ namespace Analyser is
                 return null
             fi
 
-            return p.working_set64
+            p.refresh()
+
+            return p.working_set64 + _descendants_working_set(p.id)
+        si
+
+        // The working set of every process under `pid`, read from /proc: a
+        // .ghulproj analyser is started through the `dotnet` launcher, which
+        // runs the compiler as a child process. Zero where /proc is absent.
+        _descendants_working_set(pid: int) -> long static is
+            let total mut = 0L
+
+            try
+                let children = File.read_all_text("/proc/{pid}/task/{pid}/children")
+
+                for text in children.split([' ', '\n']) do
+                    if text.length > 0 then
+                        let child = int.parse(text)
+
+                        try
+                            total = total + Process.get_process_by_id(child).working_set64
+                        catch ex: Exception
+                        yrt
+
+                        total = total + _descendants_working_set(child)
+                    fi
+                od
+            catch ex: Exception
+            yrt
+
+            return total
         si
 
         // Compiler version the analyser advertised on its LISTEN frame,
@@ -1712,10 +1741,13 @@ namespace Analyser is
         read_response() -> Response is
             let response = _read_response_bounded()
 
+            // Every diagnostics frame lists every excluded file, so each one
+            // replaces what the last said. An analyser from before the list
+            // existed sends none, and nothing is taken to be excluded.
             if let diagnostics: Response.DIAGNOSTICS = response then
-                if let excluded = diagnostics.excluded_paths then
-                    _excluded_paths.clear()
+                _excluded_paths.clear()
 
+                if let excluded = diagnostics.excluded_paths then
                     for path in excluded do
                         _excluded_paths.add(Path.get_full_path(Path.combine(_project_directory, path)))
                     od
