@@ -94,7 +94,13 @@ namespace Analyser is
             run: (ANALYSER_SESSION, JsonElement) -> string,
             arguments: JsonElement
         ) -> string static is
-            let result = run(session, arguments)
+            let result mut = run(session, arguments)
+
+            // A file a whole-file @@IF leaves out of the target answers
+            // empty, which must not read as clean.
+            if let file = WIRE.try_get_string(arguments, "file") /\ session.is_excluded(file) then
+                result = session.excluded_notice
+            fi
 
             // Read the version after `run`, not before: the session spawns
             // lazily on its first query, so the LISTEN frame carrying the

@@ -81,6 +81,13 @@ that. The nearest one applies:
 - `compiler`: a compiler command line, passed to `ghul project` as
   `--compiler`.
 
+A file a whole-file `@@IF` leaves out of the target the analyser compiles
+for, such as a .NET-only file under an llvm compiler, is not analysed. Every
+tool that takes a `file`, and the edit hook, says so for it ("not analysed by
+the llvm compiler: this file is excluded on this target") rather than giving
+an empty answer that reads as clean. This needs ghul.compiler 71.14.0 or
+later; an older analyser doesn't report excluded files.
+
 The last two apply only to a project opened through its manifest. Comments
 and trailing commas are allowed, and an unknown key is refused by name. An
 edit to the file recycles a warm analyser, as `release_session` would.

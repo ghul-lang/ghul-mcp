@@ -132,8 +132,13 @@ namespace Analyser is
             diagnostics: Collections.List[HOOK_DIAGNOSTIC],
             host_error: string?,
             compiler_version: string?,
-            previous_signature: string?
+            previous_signature: string?,
+            excluded_notice: string?
         ) -> HOOK_REPORT static is
+            if let notice = excluded_notice /\ !host_error? then
+                return HOOK_REPORT("ghūl diagnostics for {file}: {notice}\n", "excluded")
+            fi
+
             let rows = group(diagnostics)
             let current = signature(rows)
 
@@ -252,7 +257,8 @@ namespace Analyser is
                     diagnostics_of(reply),
                     host_error,
                     WIRE.try_get_string(reply, "compilerVersion"),
-                    previous)
+                    previous,
+                    WIRE.try_get_string(reply, "excludedNotice"))
 
             // Recorded before deciding what to show: a file that went clean
             // has to clear the state, or the same breakage coming back later
