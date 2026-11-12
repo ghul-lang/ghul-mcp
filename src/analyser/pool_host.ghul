@@ -425,6 +425,10 @@ namespace Analyser is
                 let reply = EDIT_REPLY(result)
                 reply.compiler_version = session().compiler_label
 
+                if session().is_excluded(file) then
+                    reply.excluded_notice = session().excluded_notice
+                fi
+
                 return reply_json(reply)
             catch ex: Exception
                 return error_json("{ex.get_type().name}: {ex.message}")
@@ -597,10 +601,15 @@ namespace Analyser is
         // existed reports null and clients skip the stamp.
         compiler_version: string? public
 
+        // Set where a whole-file @@IF leaves the file out of the target the
+        // analyser analyses, saying so: its empty diagnostics are not clean.
+        excluded_notice: string? public
+
         init(diagnostics: LIST[EDIT_DIAGNOSTIC]) is
             ok = true
             self.diagnostics = diagnostics
             self.compiler_version = null
+            self.excluded_notice = null
         si
     si
 

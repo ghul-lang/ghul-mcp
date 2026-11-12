@@ -235,6 +235,9 @@ send '{"jsonrpc":"2.0","id":25,"method":"tools/call","params":{"name":"pool_stat
 await 25
 response 25 | grep -q "$tmp" || fail "pool_status: expected the default project in the sweep"
 response 25 | grep -q "ghul.compiler " || fail "pool_status: expected a compiler version in the sweep"
+# The analyser's memory counts the compiler the dotnet launcher runs, not
+# the launcher alone, which is tens of MB.
+response 25 | grep -qE 'sources, [0-9]{3,}(\.[0-9]+)? MB|sources, [0-9.]+ GB' || fail "pool_status: expected the analyser's memory to count the compiler process, got: $(response 25)"
 response 25 | grep -q "requests" || fail "pool_status: expected request counters"
 response 25 | grep -q "analyser:" || fail "pool_status: expected an analyser line"
 
@@ -325,6 +328,31 @@ response 32 | grep -q 'narrowing-presence' && fail "inlays: code filter should d
 send "{\"jsonrpc\":\"2.0\",\"id\":33,\"method\":\"tools/call\",\"params\":{\"name\":\"inlays\",\"arguments\":{\"project\":\"$hints_dir\",\"file\":\"src/test.ghul\",\"code\":\"no-such-code\"}}}"
 await 33
 response 33 | grep -q 'no inlays in src/test.ghul match' || fail "inlays: expected miss message for an unmatched code"
+
+# A file a whole-file @@IF leaves out of the target is not analysed, so
+# every file-taking tool says so rather than answering empty.
+printf '@@IF.wasm()\n\nonly_on_wasm() -> int => not_declared_anywhere\n' > "$hints_dir/src/wasm_only.ghul"
+
+send "{\"jsonrpc\":\"2.0\",\"id\":34,\"method\":\"tools/call\",\"params\":{\"name\":\"hover\",\"arguments\":{\"project\":\"$hints_dir\",\"file\":\"src/wasm_only.ghul\",\"line\":3,\"column\":1}}}"
+await 34
+response 34 | grep -q 'not analysed by the dotnet compiler: this file is excluded on this target' || fail "excluded file: expected hover to say it was not analysed, got: $(response 34)"
+
+send "{\"jsonrpc\":\"2.0\",\"id\":35,\"method\":\"tools/call\",\"params\":{\"name\":\"diagnostics\",\"arguments\":{\"project\":\"$hints_dir\",\"file\":\"src/wasm_only.ghul\"}}}"
+await 35
+response 35 | grep -q 'not analysed by the dotnet compiler' || fail "excluded file: expected diagnostics to say it was not analysed, got: $(response 35)"
+
+send "{\"jsonrpc\":\"2.0\",\"id\":36,\"method\":\"tools/call\",\"params\":{\"name\":\"hover\",\"arguments\":{\"project\":\"$hints_dir\",\"file\":\"src/test.ghul\",\"line\":1,\"column\":1}}}"
+await 36
+response 36 | grep -q 'not analysed' && fail "excluded file: an included file must not be reported as excluded, got: $(response 36)"
+
+# Once the @@IF goes, the file is analysed again and no longer reported.
+printf 'only_on_wasm() -> int => 1\n' > "$hints_dir/src/wasm_only.ghul"
+
+send "{\"jsonrpc\":\"2.0\",\"id\":37,\"method\":\"tools/call\",\"params\":{\"name\":\"hover\",\"arguments\":{\"project\":\"$hints_dir\",\"file\":\"src/wasm_only.ghul\",\"line\":1,\"column\":1}}}"
+await 37
+response 37 | grep -q 'not analysed' && fail "excluded file: a file whose @@IF was removed must not stay excluded, got: $(response 37)"
+
+printf '@@IF.wasm()\n\nonly_on_wasm() -> int => not_declared_anywhere\n' > "$hints_dir/src/wasm_only.ghul"
 
 # --- part 5: pool operations --------------------------------------------
 # Verify the pool exposes per-session detail, that heap_check returns
@@ -513,6 +541,9 @@ edit_hook() {
 
 hook_out=$(edit_hook Edit "$tmp/src/main.ghul")
 [ -z "$hook_out" ] || fail "edit hook: a clean file should report nothing, got: $hook_out"
+
+hook_out=$(edit_hook Edit "$hints_dir/src/wasm_only.ghul")
+echo "$hook_out" | grep -q 'not analysed by the dotnet compiler' || fail "edit hook: expected an excluded file to be reported as not analysed, got: $hook_out"
 
 echo "this is not ghul" >> "$tmp/src/main.ghul"
 

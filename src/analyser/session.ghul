@@ -74,6 +74,10 @@ namespace Analyser is
         // The .ghul-mcp.json in force at the last spawn.
         _config: MCP_CONFIG
 
+        // The files the analyser last said a whole-file @@IF leaves out of
+        // the target, as full paths.
+        _excluded_paths: Collections.SET[string]
+
         // The DLL this project opts into for analysis via the
         // GhulAnalyserCompiler property, resolved once per spawn. Null when
         // unset: the spawn then uses the project's pinned ghul.compiler tool
@@ -125,6 +129,7 @@ namespace Analyser is
             _compiler_host = null
             _compiler_program = null
             _config = MCP_CONFIG()
+            _excluded_paths = Collections.SET[string]()
             _mtimes = MAP[string, System.DateTime]()
             _stderr_capture = StringBuilder()
             _last_hints_for = LIST[string]()
@@ -158,12 +163,53 @@ namespace Analyser is
                 return null
             fi
 
-            return p.working_set64
+            p.refresh()
+
+            return p.working_set64 + _descendants_working_set(p.id)
+        si
+
+        // The working set of every process under `pid`, read from /proc: a
+        // .ghulproj analyser is started through the `dotnet` launcher, which
+        // runs the compiler as a child process. Zero where /proc is absent.
+        _descendants_working_set(pid: int) -> long static is
+            let total mut = 0L
+
+            try
+                let children = File.read_all_text("/proc/{pid}/task/{pid}/children")
+
+                for text in children.split([' ', '\n']) do
+                    if text.length > 0 then
+                        let child = int.parse(text)
+
+                        try
+                            total = total + Process.get_process_by_id(child).working_set64
+                        catch ex: Exception
+                        yrt
+
+                        total = total + _descendants_working_set(child)
+                    fi
+                od
+            catch ex: Exception
+            yrt
+
+            return total
         si
 
         // Compiler version the analyser advertised on its LISTEN frame,
         // or null before the first spawn.
         compiler_version: string? => _compiler_version
+
+        // Whether the analyser said, on its last diagnostics, that a whole-file
+        // @@IF leaves `path` out of the target it analyses: nothing in the
+        // file is analysed, so an empty answer for it is not a clean one.
+        //
+        // - path: the file, absolute or relative to the project directory
+        is_excluded(path: string) -> bool =>
+            _excluded_paths.contains(Path.get_full_path(Path.combine(_project_directory, path)))
+
+        // What to say for a file is_excluded holds.
+        excluded_notice: string =>
+            "not analysed by the {_compiler_host ?? "current"} compiler: this file is excluded on this target"
 
         // The compiler version with the host it runs on, for the version
         // line on replies, or null before the first spawn.
@@ -1693,6 +1739,25 @@ namespace Analyser is
         // a Response. Wrapped in a bounded wait so a wedged analyser
         // surfaces as a diagnosable timeout rather than a permanent hang.
         read_response() -> Response is
+            let response = _read_response_bounded()
+
+            // Every diagnostics frame lists every excluded file, so each one
+            // replaces what the last said. An analyser from before the list
+            // existed sends none, and nothing is taken to be excluded.
+            if let diagnostics: Response.DIAGNOSTICS = response then
+                _excluded_paths.clear()
+
+                if let excluded = diagnostics.excluded_paths then
+                    for path in excluded do
+                        _excluded_paths.add(Path.get_full_path(Path.combine(_project_directory, path)))
+                    od
+                fi
+            fi
+
+            return response
+        si
+
+        _read_response_bounded() -> Response is
             let response: Response? mut = null
             let error: Exception? mut = null
 
