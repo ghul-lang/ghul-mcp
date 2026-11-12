@@ -25,12 +25,14 @@ namespace Analyser is
         init() is si
 
         /// Whether a directory is a manifest project: it holds a manifest and
-        /// no `.ghulproj`. A directory holding both is a `.ghulproj` project.
+        /// either no `.ghulproj` or a preference for the manifest. A
+        /// directory holding both is otherwise a `.ghulproj` project.
         ///
         /// - directory: the directory to look in
-        is_manifest_project(directory: string) -> bool static =>
+        /// - prefer_manifest: whether a manifest beside a `.ghulproj` is taken
+        is_manifest_project(directory: string, prefer_manifest: bool) -> bool static =>
             File.exists(Path.combine(directory, MANIFEST)) /\
-            Directory.get_files(directory, "*.ghulproj").count == 0
+            (prefer_manifest \/ Directory.get_files(directory, "*.ghulproj").count == 0)
 
         /// The target to analyse for: null when the manifest lists one
         /// target or none, which `ghul` chooses for itself, otherwise the

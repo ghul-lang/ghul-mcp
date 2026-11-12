@@ -89,6 +89,7 @@ stub_bin="$tmp/stub-bin"
 mkdir -p "$stub_bin"
 cat > "$stub_bin/ghul" <<'STUB'
 #!/bin/sh
+echo "$*" >> "$(dirname "$0")/calls.log"
 if [ "$1 $2" = "project response-file" ] ; then
     shift 2
     while [ $# -gt 0 ] ; do
@@ -368,6 +369,41 @@ printf 'entry() is\n    IO.Std.write_line(not_declared_anywhere);\nsi\n' > "$man
 send "{\"jsonrpc\":\"2.0\",\"id\":60,\"method\":\"tools/call\",\"params\":{\"name\":\"diagnostics\",\"arguments\":{\"project\":\"$manifest_project\"}}}"
 await 60
 response 60 | grep -q 'not_declared_anywhere' || fail "manifest project: expected the source error from diagnostics, got: $(response 60)"
+response 60 | grep -q 'ghul.compiler [^ ]* (dotnet)' || fail "manifest project: expected the host on the version line, got: $(response 60)"
+
+# --- .ghul-mcp.json -------------------------------------------------------
+
+# A directory holding both a .ghulproj and a manifest is opened through the
+# .ghulproj, unless a .ghul-mcp.json at or above it prefers the manifest;
+# its compiler-host is passed to every ghul project call.
+preferring="$tmp/preferring"
+mkdir -p "$preferring/project/src"
+cp -r .config "$preferring/project/"
+(cd "$preferring/project" && dotnet tool restore >/dev/null)
+cp ghul-mcp.ghulproj "$preferring/project/project.ghulproj"
+echo '{ "name": "preferring", "sources": ["src/**/*.ghul"] }' > "$preferring/project/ghul-project.json"
+printf 'entry() is\n    IO.Std.write_line(only_through_the_manifest);\nsi\n' > "$preferring/project/src/broken.ghul"
+printf '{\n    // comments and trailing commas are allowed\n    "project-file": "manifest",\n    "compiler-host": "dotnet",\n}\n' > "$preferring/.ghul-mcp.json"
+: > "$stub_bin/calls.log"
+
+send "{\"jsonrpc\":\"2.0\",\"id\":61,\"method\":\"tools/call\",\"params\":{\"name\":\"diagnostics\",\"arguments\":{\"project\":\"$preferring/project\"}}}"
+await 61
+response 61 | grep -q 'only_through_the_manifest' || fail ".ghul-mcp.json: expected the source error from diagnostics, got: $(response 61)"
+grep -q 'project response-file .* --compiler-host "*dotnet' "$stub_bin/calls.log" || fail ".ghul-mcp.json: expected --compiler-host on the response-file call, got: $(cat "$stub_bin/calls.log")"
+grep -q 'project compiler .*--compiler-host "*dotnet' "$stub_bin/calls.log" || fail ".ghul-mcp.json: expected --compiler-host on the compiler call, got: $(cat "$stub_bin/calls.log")"
+response 61 | grep -q 'ghul.compiler [^ ]* (dotnet)' || fail ".ghul-mcp.json: expected the host on the version line, got: $(response 61)"
+
+# An unknown key is refused, naming it.
+refusing="$tmp/refusing"
+mkdir -p "$refusing/src"
+cp -r .config "$refusing/"
+echo '{ "name": "refusing", "sources": ["src/**/*.ghul"] }' > "$refusing/ghul-project.json"
+printf 'entry() is si\n' > "$refusing/src/main.ghul"
+echo '{ "project-file": "manifest", "colour": "blue" }' > "$refusing/.ghul-mcp.json"
+
+send "{\"jsonrpc\":\"2.0\",\"id\":62,\"method\":\"tools/call\",\"params\":{\"name\":\"diagnostics\",\"arguments\":{\"project\":\"$refusing\"}}}"
+await 62
+response 62 | grep -q 'unknown key colour' || fail ".ghul-mcp.json: expected the unknown key to be named, got: $(response 62)"
 
 exec 3>&-
 wait "$server_pid" 2>/dev/null || true
@@ -380,7 +416,8 @@ qlog2="$tmp/query-log.jsonl"
 grep -q '"tool":"diagnostics"' "$qlog2" || fail "query log: diagnostics entries"
 grep -q '"tool":"hover"' "$qlog2" || fail "query log: hover entry"
 grep -q '"tool":"inlays"' "$qlog2" || fail "query log: inlays entries"
-grep -q '"status":"error"' "$qlog2" && fail "query log: unexpected error status"
+# The refused .ghul-mcp.json above is the one call expected to fail.
+grep '"status":"error"' "$qlog2" | grep -v "$refusing" | grep -q . && fail "query log: unexpected error status"
 
 # --- part 6: pool host --------------------------------------------------
 # The per-project Unix-socket serve mode: the edit hook feeds edits to it

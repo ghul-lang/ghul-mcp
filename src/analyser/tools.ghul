@@ -99,7 +99,7 @@ namespace Analyser is
             // Read the version after `run`, not before: the session spawns
             // lazily on its first query, so the LISTEN frame carrying the
             // compiler version has only been seen by then.
-            let compiler = session.compiler_version
+            let compiler = session.compiler_label
             let compiler_text =
                 if compiler? then
                     "ghul.compiler {compiler}"

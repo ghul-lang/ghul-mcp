@@ -63,6 +63,17 @@ namespace Analyser is
         _temp_directory: string?
         _compiler_version: string?
 
+        // The host the answering compiler runs on, from the spawn, or null
+        // before the first spawn.
+        _compiler_host: string?
+
+        // The program the spawn ran for a manifest project, so the drift
+        // check notices a compiler installed over it.
+        _compiler_program: string?
+
+        // The .ghul-mcp.json in force at the last spawn.
+        _config: MCP_CONFIG
+
         // The DLL this project opts into for analysis via the
         // GhulAnalyserCompiler property, resolved once per spawn. Null when
         // unset: the spawn then uses the project's pinned ghul.compiler tool
@@ -111,6 +122,9 @@ namespace Analyser is
             _options.include_fields = true
 
             _temp_directory = null
+            _compiler_host = null
+            _compiler_program = null
+            _config = MCP_CONFIG()
             _mtimes = MAP[string, System.DateTime]()
             _stderr_capture = StringBuilder()
             _last_hints_for = LIST[string]()
@@ -150,6 +164,15 @@ namespace Analyser is
         // Compiler version the analyser advertised on its LISTEN frame,
         // or null before the first spawn.
         compiler_version: string? => _compiler_version
+
+        // The compiler version with the host it runs on, for the version
+        // line on replies, or null before the first spawn.
+        compiler_label: string? =>
+            if let version = _compiler_version then
+                if let host = _compiler_host then "{version} ({host})" else version fi
+            else
+                null
+            fi
 
         open_paths_equal(a: LIST[string], b: LIST[string]) -> bool static is
             if a.count != b.count then
@@ -450,9 +473,48 @@ namespace Analyser is
             // ghul names a manifest project's compiler from the manifest and
             // the lockfile, so an edit to either can change it. start() never
             // uses the override for one, so neither does this.
-            if MANIFEST_PROJECT.is_manifest_project(_project_directory) then
-                return "ghul-project {_read_or_none(MANIFEST_PROJECT.MANIFEST)} {_read_or_none(MANIFEST_PROJECT.LOCKFILE)}"
+            let config = _load_config()
+
+            if !config? then
+                return "config-unreadable"
             fi
+
+            let config_text = "config {config.path ?? "none"} {config.text ?? ""}"
+
+            if MANIFEST_PROJECT.is_manifest_project(_project_directory, config.prefer_manifest) then
+                return "{config_text} ghul-project {_read_or_none(MANIFEST_PROJECT.MANIFEST)} {_read_or_none(MANIFEST_PROJECT.LOCKFILE)} {_program_stamp()}"
+            fi
+
+            // A preference that has not changed which route is taken still
+            // counts, so that editing the file is always noticed.
+            if config.path? then
+                return "{config_text} {_ghulproj_fingerprint()}"
+            fi
+
+            return _ghulproj_fingerprint()
+        si
+
+        // The configuration as it is now, or null where the file cannot be
+        // read: the next spawn reports why.
+        _load_config() -> MCP_CONFIG? is
+            try
+                return MCP_CONFIG.load(_project_directory)
+            catch ex: Exception
+                return null
+            yrt
+        si
+
+        // The path and write time of the program a manifest project's
+        // compiler was spawned with, where it is a file.
+        _program_stamp() -> string is
+            if let program = _compiler_program /\ File.exists(program) then
+                return "program {program} {File.get_last_write_time_utc(program).ticks}"
+            fi
+
+            return "program {_compiler_program ?? "none"}"
+        si
+
+        _ghulproj_fingerprint() -> string is
 
             // Re-resolve rather than read the field cached at spawn time:
             // the drift check exists precisely to notice when the property
@@ -853,6 +915,7 @@ namespace Analyser is
             let arguments = StringBuilder()
 
             arguments.append("project response-file --output \"{path}\" --source-globs \"{source_globs_path}\"")
+            arguments.append(_config.tool_arguments)
 
             if let target: string = MANIFEST_PROJECT.target_to_analyse(_project_directory) then
                 arguments.append(" --target {target}")
@@ -875,7 +938,7 @@ namespace Analyser is
 
             // A ghul command-line tool from before --json refuses the option
             // and prints the command as one quoted line.
-            let output = MANIFEST_PROJECT.run_ghul(_project_directory, "project compiler")
+            let output = MANIFEST_PROJECT.run_ghul(_project_directory, "project compiler{_config.tool_arguments}")
 
             for line in output.split(['\n']) do
                 let trimmed = line.trim()
@@ -888,12 +951,27 @@ namespace Analyser is
             throw Exception("ghul named no compiler for {_project_directory}")
         si
 
+        // The host a compiler command line runs on, where the configuration
+        // names none and ghul chose: dotnet for a program run by dotnet,
+        // wasm for one run by Node, otherwise a native executable, llvm.
+        host_of(compiler: LIST[string]) -> string static is
+            let program = (Path.get_file_name_without_extension(compiler[0]) ?? "").to_lower_invariant()
+
+            if program =~ "dotnet" then
+                return "dotnet"
+            elif program =~ "node" then
+                return "wasm"
+            fi
+
+            return "llvm"
+        si
+
         // The command `ghul project compiler --json` prints as a JSON array, one
         // string an argument, or null where ghul refuses the option or prints
         // something else.
         _listed_compiler() -> LIST[string]? is
             try
-                let output = MANIFEST_PROJECT.run_ghul(_project_directory, "project compiler --json")
+                let output = MANIFEST_PROJECT.run_ghul(_project_directory, "project compiler --json{_config.tool_arguments}")
 
                 for line in output.split(['\n']) do
                     let trimmed = line.trim()
@@ -1025,7 +1103,9 @@ namespace Analyser is
             // A ghul-project.json project is resolved by the ghul tool, which
             // writes the same two files a .ghulproj build does and names the
             // compiler; none of the .NET build steps apply to it.
-            let is_manifest_project = MANIFEST_PROJECT.is_manifest_project(_project_directory)
+            _config = MCP_CONFIG.load(_project_directory)
+
+            let is_manifest_project = MANIFEST_PROJECT.is_manifest_project(_project_directory, _config.prefer_manifest)
 
             if is_manifest_project then
                 generate_manifest_response_file(project_response_file, source_globs_path)
@@ -1072,6 +1152,9 @@ namespace Analyser is
             if is_manifest_project then
                 let compiler = manifest_compiler()
 
+                _compiler_program = compiler[0]
+                _compiler_host = _config.compiler_host ?? host_of(compiler)
+
                 start_info.file_name = compiler[0]
 
                 for index in 1..compiler.count do
@@ -1080,6 +1163,9 @@ namespace Analyser is
 
                 start_info.argument_list.add("@{response_file}")
             else
+                _compiler_program = null
+                _compiler_host = "dotnet"
+
                 start_info.file_name = "dotnet"
                 start_info.arguments = "{program} @\"{response_file}\""
             fi

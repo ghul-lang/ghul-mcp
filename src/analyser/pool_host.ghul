@@ -423,7 +423,7 @@ namespace Analyser is
                 _edits = _edits + 1L
 
                 let reply = EDIT_REPLY(result)
-                reply.compiler_version = session().compiler_version
+                reply.compiler_version = session().compiler_label
 
                 return reply_json(reply)
             catch ex: Exception
@@ -441,7 +441,7 @@ namespace Analyser is
             if let session: ANALYSER_SESSION = _session then
                 warm = true
                 pid = session.process_id
-                compiler = session.compiler_version
+                compiler = session.compiler_label
                 source_count = session.known_source_count
                 analyser_working_set = session.working_set
             fi
