@@ -41,9 +41,10 @@ Tools:
 All lines and columns are 1-based, matching compiler diagnostics.
 
 Every analyser-backed result starts with a context line naming the project
-directory and the `ghul.compiler` version that answered, so a query routed
-to the wrong project - or served by a session warmed on a superseded pin -
-is visible in the result itself.
+directory, the `ghul.compiler` version that answered and the host it runs
+on (`dotnet`, `llvm` or `wasm`), so a query routed to the wrong project - or
+served by a session warmed on a superseded pin - is visible in the result
+itself.
 
 The server drives the target project's own pinned `ghul.compiler` tool in
 analysis mode, seeds it with the project's assembly references and source
@@ -53,6 +54,36 @@ packed dev compiler (`0.0.0-*`, from
 `dotnet pack -p:Version=0.0.0-local-<slug>.1` installed into the project's
 manifest) is accepted regardless of the minimum version - it is built from
 current source, so its analysis protocol is current too.
+
+## Choosing the route and the compiler
+
+A project with a `.ghulproj` is analysed through it, by its pinned
+`ghul.compiler` tool. A `ghul-project.json` project with no `.ghulproj` is
+analysed through the `ghul` command-line tool, which writes its response file
+and names its compiler (`ghul project response-file`, `ghul project compiler
+--json`).
+
+A `.ghul-mcp.json` in the project directory or any directory above it changes
+that. The nearest one applies:
+
+```json
+{
+    "project-file": "manifest",
+    "compiler-host": "llvm"
+}
+```
+
+- `project-file`: `"manifest"` opens a directory that holds both a
+  `.ghulproj` and a `ghul-project.json` through the manifest; `"ghulproj"`,
+  the default, through the `.ghulproj`.
+- `compiler-host`: passed to `ghul project` as `--compiler-host` (`llvm`,
+  `wasm` or `dotnet`).
+- `compiler`: a compiler command line, passed to `ghul project` as
+  `--compiler`.
+
+The last two apply only to a project opened through its manifest. Comments
+and trailing commas are allowed, and an unknown key is refused by name. An
+edit to the file recycles a warm analyser, as `release_session` would.
 
 ## Install as a .NET tool
 
