@@ -17,7 +17,7 @@ namespace MCP is
                 if c == '_' then
                     upper_next = true
                 elif upper_next then
-                    result.append(char.to_upper(c))
+                    result.append(c.to_upper())
                     upper_next = false
                 else
                     result.append(c)
