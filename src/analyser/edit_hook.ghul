@@ -81,7 +81,7 @@ namespace Analyser is
 
             let result = LIST[HOOK_ROW](error_rows)
 
-            let sorted_others = other_rows |> sort_by(row => row.diagnostic.severity) |> collect()
+            let sorted_others = other_rows |> sort_by(row => row.diagnostic.severity) |> ARRAY()
 
             result.add_range(sorted_others)
 
