@@ -1,5 +1,5 @@
 namespace Analyser is
-    use System.Text.StringBuilder
+    use Text.StringBuilder
     use System.Text.Json.JsonElement
 
     use Collections.LIST
@@ -50,7 +50,7 @@ namespace Analyser is
 
         TYPE_SCHEMA: string static =>
             "{{\"type\": \"object\", \"properties\": {{"
-            "\"type\": {{\"type\": \"string\", \"description\": \"type expression as it would appear in ghūl source, e.g. `System.Text.StringBuilder`, `Semantic.Symbols.SIGNATURE_PART`, `Collections.LIST[string]`; fully-qualified for imported types\"}},"
+            "\"type\": {{\"type\": \"string\", \"description\": \"type expression as it would appear in ghūl source, e.g. `Text.StringBuilder`, `Semantic.Symbols.SIGNATURE_PART`, `Collections.LIST[string]`; fully-qualified for imported types\"}},"
             "{PROJECT_PROPERTY}"
             "}}, \"required\": [\"type\"]}}"
 
@@ -812,7 +812,7 @@ namespace Analyser is
             let file = WIRE.try_get_string(arguments, "file")
 
             if !file? \/ file.length == 0 then
-                throw System.Exception("file argument is required")
+                throw Ghul.Exception("file argument is required")
             fi
 
             let code_filter = WIRE.try_get_string(arguments, "code")
@@ -995,7 +995,7 @@ namespace Analyser is
             let name = WIRE.try_get_string(arguments, "name")
 
             if !name? \/ name.length == 0 then
-                throw System.Exception("name argument is required")
+                throw Ghul.Exception("name argument is required")
             fi
 
             let matches = resolve_name(session, name)
@@ -1186,7 +1186,7 @@ namespace Analyser is
                 if index >= 0 then
                     return POSITION(match.file, match.symbol.start_line, index + 1)
                 fi
-            catch ex: System.Exception
+            catch ex: Ghul.Exception
             yrt
 
             return default_position
@@ -1229,7 +1229,7 @@ namespace Analyser is
             let type_expression = WIRE.try_get_string(arguments, "type")
 
             if !type_expression? \/ type_expression.length == 0 then
-                throw System.Exception("type argument is required")
+                throw Ghul.Exception("type argument is required")
             fi
 
             let response mut = session.describe_type(type_expression)
@@ -1249,7 +1249,7 @@ namespace Analyser is
             fi
 
             if response.resolved_name.length == 0 then
-                return "no type named {type_expression} - fully-qualified names work best for imported types, e.g. `System.Text.StringBuilder`"
+                return "no type named {type_expression} - fully-qualified names work best for imported types, e.g. `Text.StringBuilder`"
             fi
 
             let result = StringBuilder()
@@ -1386,14 +1386,14 @@ namespace Analyser is
             let file = WIRE.try_get_string(arguments, "file")
 
             if !file? then
-                throw System.Exception("file argument is required")
+                throw Ghul.Exception("file argument is required")
             fi
 
             let line = WIRE.try_get_int(arguments, "line")
             let column = WIRE.try_get_int(arguments, "column")
 
             if line < 1 \/ column < 1 then
-                throw System.Exception("line and column arguments are required and 1-based")
+                throw Ghul.Exception("line and column arguments are required and 1-based")
             fi
 
             return POSITION(file, line, column)

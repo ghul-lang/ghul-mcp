@@ -2,15 +2,15 @@ namespace Analyser is
     use System.Diagnostics.Process
     use System.Diagnostics.ProcessStartInfo
 
-    use System.Exception
-    use System.Reflection.Assembly
+    use Ghul.Exception
+    use Ghul.Reflection.Assembly
 
-    use System.Security.Cryptography.MD5
+    use Crypto.MD5
 
     use System.Text.Json.JsonElement
     use System.Text.Json.JsonSerializer
-    use System.Text.StringBuilder
-    use System.Text.UTF8Encoding
+    use Text.StringBuilder
+    use Text.UTF8_ENCODING
 
     use System.Net.Sockets.AddressFamily
     use System.Net.Sockets.NetworkStream
@@ -73,7 +73,7 @@ namespace Analyser is
 
             for socket_path in discover_sockets() do
                 try
-                    let age = System.DateTime.utc_now - File.get_last_write_time_utc(socket_path)
+                    let age = Time.DateTime.utc_now - File.get_last_write_time_utc(socket_path)
 
                     if age.total_seconds < cast double(DEAD_SOCKET_GRACE_SECONDS) then
                         continue
@@ -98,7 +98,7 @@ namespace Analyser is
         socket_path_for(project: string) -> string static is
             let builder = StringBuilder()
 
-            for b in MD5.create().compute_hash(UTF8Encoding(false).get_bytes(Path.get_full_path(project))) do
+            for b in MD5.create().compute_hash(UTF8_ENCODING(false).get_bytes(Path.get_full_path(project))) do
                 builder.append("{b:x2}")
             od
 
@@ -447,7 +447,7 @@ namespace Analyser is
             // Wait for the socket to accept connections, not merely to
             // exist: the host deletes and rebinds its socket at startup, so
             // a file appearing early says nothing about reachability.
-            let deadline = System.Diagnostics.Stopwatch.start_new()
+            let deadline = Time.Stopwatch.start_new()
 
             do
                 if let probe: Socket = try_connect(socket_path) then
@@ -459,7 +459,7 @@ namespace Analyser is
                     throw Exception("the pool host for {project} did not start listening")
                 fi
 
-                System.Threading.Thread.sleep(CONNECT_POLL_MS)
+                Tasks.Thread.sleep(CONNECT_POLL_MS)
             od
         si
 
@@ -479,7 +479,7 @@ namespace Analyser is
 
         write_line(client: Socket, line: string) static is
             let stream = NetworkStream(client, false)
-            let writer = StreamWriter(stream, UTF8Encoding(false))
+            let writer = StreamWriter(stream, UTF8_ENCODING(false))
 
             writer.auto_flush = true
             writer.write_line(line)
@@ -488,7 +488,7 @@ namespace Analyser is
 
         read_reply(client: Socket) -> string? static is
             let stream = NetworkStream(client, false)
-            let reader = StreamReader(stream, UTF8Encoding(false))
+            let reader = StreamReader(stream, UTF8_ENCODING(false))
 
             do
                 let line = reader.read_line()

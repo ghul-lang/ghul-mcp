@@ -1,7 +1,7 @@
 namespace Analyser is
-    use System.Exception
+    use Ghul.Exception
 
-    use System.Text.StringBuilder
+    use Text.StringBuilder
 
     use Collections.LIST
 

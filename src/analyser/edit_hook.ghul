@@ -1,15 +1,15 @@
 namespace Analyser is
-    use System.Exception
+    use Ghul.Exception
 
-    use System.Security.Cryptography.MD5
-    use System.Security.Cryptography.SHA256
+    use Crypto.MD5
+    use Crypto.SHA256
 
     use System.Text.Json.JsonDocument
     use System.Text.Json.JsonElement
     use System.Text.Json.JsonSerializer
     use System.Text.Json.JsonValueKind
-    use System.Text.StringBuilder
-    use System.Text.UTF8Encoding
+    use Text.StringBuilder
+    use Text.UTF8_ENCODING
 
     use Collections.LIST
     use Collections.MAP
@@ -104,7 +104,7 @@ namespace Analyser is
                 text.append(line).append('\n')
             od
 
-            return hex(SHA256.hash_data(UTF8Encoding(false).get_bytes(text.to_string())))
+            return hex(SHA256.hash_data(UTF8_ENCODING(false).get_bytes(text.to_string())))
         si
 
         severity_name(severity: int) -> string static =>
@@ -325,7 +325,7 @@ namespace Analyser is
         si
 
         short_hash(text: string) -> string static =>
-            EDIT_HOOK_REPORT.hex(MD5.hash_data(UTF8Encoding(false).get_bytes(text))).substring(0, 16)
+            EDIT_HOOK_REPORT.hex(MD5.hash_data(UTF8_ENCODING(false).get_bytes(text))).substring(0, 16)
     si
 
     // The PostToolUse output an agent is shown: a hook's plain standard

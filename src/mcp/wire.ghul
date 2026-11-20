@@ -10,7 +10,7 @@ namespace MCP is
         init() is si
 
         convert_name(name: string) -> string is
-            let result = System.Text.StringBuilder()
+            let result = Text.StringBuilder()
             let upper_next mut = false
 
             for c in name do

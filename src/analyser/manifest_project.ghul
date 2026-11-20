@@ -1,5 +1,5 @@
 namespace Analyser is
-    use System.Exception
+    use Ghul.Exception
     use System.Diagnostics.Process
     use System.Diagnostics.ProcessStartInfo
     use System.Text.Json.JsonDocument

@@ -50,8 +50,8 @@ default_query_log_path() -> string? is
 si
 
 entry(arguments: ARRAY[string]) is
-    Std.input_encoding = System.Text.UTF8Encoding(false)
-    Std.output_encoding = System.Text.UTF8Encoding(false)
+    Std.input_encoding = Text.UTF8_ENCODING(false)
+    Std.output_encoding = Text.UTF8_ENCODING(false)
 
     let default_project: string? mut = null
     let query_log_path: string? mut = default_query_log_path()
@@ -88,7 +88,7 @@ entry(arguments: ARRAY[string]) is
 
             try
                 pool_idle_timeout = int.parse(seconds_string)
-            catch ex: System.Exception
+            catch ex: Ghul.Exception
                 Std.error.write_line(
                     "ghul-mcp: ignoring garbled --pool-host-idle-timeout value: {seconds_string}"
                 )
@@ -127,7 +127,7 @@ entry(arguments: ARRAY[string]) is
     let reader =
         IO.StreamReader(
             Std.open_standard_input(),
-            System.Text.UTF8Encoding(false),
+            Text.UTF8_ENCODING(false),
             false,
             65536
         )
