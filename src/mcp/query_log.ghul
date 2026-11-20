@@ -46,7 +46,7 @@ namespace MCP is
                     if File.exists(p) /\ IO.FileInfo(p).length > MAX_BYTES_BEFORE_ROTATE then
                         File.move(p, "{p}.prev", true)
                     fi
-                catch ex: System.Exception
+                catch ex: Ghul.Exception
                     _disable(ex.message)
                 yrt
             fi
@@ -95,7 +95,7 @@ namespace MCP is
             if let p: string = _path then
                 try
                     File.append_all_text(p, "{JsonSerializer.serialize(entry, entry.get_type(), WIRE.options)}\n")
-                catch ex: System.Exception
+                catch ex: Ghul.Exception
                     _disable(ex.message)
                 yrt
             fi
@@ -113,7 +113,7 @@ namespace MCP is
 
             try
                 return arguments.get_raw_text()
-            catch ex: System.Exception
+            catch ex: Ghul.Exception
                 return ""
             yrt
         si
@@ -127,7 +127,7 @@ namespace MCP is
         si
 
         _now() -> string static =>
-            System.DateTime.utc_now.to_string("yyyy-MM-dd'T'HH:mm:ss.fff'Z'")
+            Time.DateTime.utc_now.to_string("yyyy-MM-dd'T'HH:mm:ss.fff'Z'")
     si
 
     class START_ENTRY is

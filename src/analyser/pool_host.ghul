@@ -1,9 +1,9 @@
 namespace Analyser is
-    use System.Exception
+    use Ghul.Exception
     use System.Text.Json.JsonElement
     use System.Text.Json.JsonSerializer
     use System.Text.Json.JsonValueKind
-    use System.Text.UTF8Encoding
+    use Text.UTF8_ENCODING
 
     use System.Net.Sockets.AddressFamily
     use System.Net.Sockets.NetworkStream
@@ -80,8 +80,8 @@ namespace Analyser is
         _session: ANALYSER_SESSION?
         _shutdown: bool
         _query_log: QUERY_LOG
-        _started: System.DateTime
-        _last_activity: System.DateTime
+        _started: Time.DateTime
+        _last_activity: Time.DateTime
         _connections: long
         _requests: long
         _errors: long
@@ -96,7 +96,7 @@ namespace Analyser is
             _session = null
             _shutdown = false
             _query_log = QUERY_LOG(query_log_path)
-            _started = System.DateTime.utc_now
+            _started = Time.DateTime.utc_now
             _last_activity = _started
             _connections = 0L
             _requests = 0L
@@ -210,7 +210,7 @@ namespace Analyser is
             client.send_timeout = SOCKET_TIMEOUT_MS
 
             let stream = NetworkStream(client, false)
-            let encoding = UTF8Encoding(false)
+            let encoding = UTF8_ENCODING(false)
 
             let reader = StreamReader(stream, encoding)
             let writer = StreamWriter(stream, encoding)
@@ -280,10 +280,10 @@ namespace Analyser is
         si
 
         handle_request(line: string) -> string is
-            let stopwatch = System.Diagnostics.Stopwatch.start_new()
+            let stopwatch = Time.Stopwatch.start_new()
 
             _requests = _requests + 1L
-            _last_activity = System.DateTime.utc_now
+            _last_activity = Time.DateTime.utc_now
 
             let frame = parse_frame(line)
 
@@ -450,7 +450,7 @@ namespace Analyser is
                 analyser_working_set = session.working_set
             fi
 
-            let now = System.DateTime.utc_now
+            let now = Time.DateTime.utc_now
 
             let reply = INFO_REPLY(_project, warm, pid, compiler, source_count)
 

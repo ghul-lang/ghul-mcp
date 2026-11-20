@@ -74,7 +74,7 @@ namespace MCP is
         si
 
         handle_tool_call(request: REQUEST) is
-            let stopwatch = System.Diagnostics.Stopwatch.start_new()
+            let stopwatch = Time.Stopwatch.start_new()
 
             let name = WIRE.try_get_string(request.params, "name")
             let arguments = WIRE.try_get_element(request.params, "arguments")
@@ -99,7 +99,7 @@ namespace MCP is
 
                 _query_log.log_call(tool_name, arguments, "ok", stopwatch.elapsed_milliseconds, result)
                 reply(request, CALL_RESULT(result, false))
-            catch ex: System.Exception
+            catch ex: Ghul.Exception
                 // Tool failures are results, not protocol errors, so the
                 // model calling the tool sees the message.
                 _query_log.log_call(tool_name, arguments, "error", stopwatch.elapsed_milliseconds, "{ex.get_type().name}: {ex.message}")

@@ -1,9 +1,9 @@
 namespace Analyser is
-    use System.Exception
+    use Ghul.Exception
     use System.Diagnostics.Process
     use System.Diagnostics.ProcessStartInfo
-    use System.Text.StringBuilder
-    use System.Text.UTF8Encoding
+    use Text.StringBuilder
+    use Text.UTF8_ENCODING
     use System.Text.Json.JsonSerializer
     use System.Text.Json.JsonSerializerOptions
 
@@ -92,9 +92,9 @@ namespace Analyser is
         // on a warm session: every query path funnels through
         // ensure_spawned, and a hover burst must not pay a manifest walk
         // per request.
-        _next_fingerprint_check: System.DateTime
+        _next_fingerprint_check: Time.DateTime
 
-        _mtimes: MAP[string, System.DateTime]
+        _mtimes: MAP[string, Time.DateTime]
         _stderr_capture: StringBuilder
         _last_hints_for: LIST[string]
 
@@ -130,12 +130,12 @@ namespace Analyser is
             _compiler_program = null
             _config = MCP_CONFIG()
             _excluded_paths = Collections.SET[string]()
-            _mtimes = MAP[string, System.DateTime]()
+            _mtimes = MAP[string, Time.DateTime]()
             _stderr_capture = StringBuilder()
             _last_hints_for = LIST[string]()
             _query_count = 0L
             last_used_order = 0L
-            _next_fingerprint_check = System.DateTime.min_value
+            _next_fingerprint_check = Time.DateTime.min_value
         si
 
         // OS process id of the running analyser, or null if it hasn't
@@ -1223,9 +1223,9 @@ namespace Analyser is
             start_info.redirect_standard_output = true
             start_info.redirect_standard_error = true
 
-            start_info.standard_input_encoding = UTF8Encoding()
-            start_info.standard_output_encoding = UTF8Encoding()
-            start_info.standard_error_encoding = UTF8Encoding()
+            start_info.standard_input_encoding = UTF8_ENCODING()
+            start_info.standard_output_encoding = UTF8_ENCODING()
+            start_info.standard_error_encoding = UTF8_ENCODING()
 
             let started = Process.start(start_info)
 
@@ -1421,7 +1421,7 @@ namespace Analyser is
             // release_session. Throttled to at most one drift check per
             // interval: every query path funnels through here, and a hover
             // burst must not pay a manifest walk per request.
-            let now = System.DateTime.utc_now
+            let now = Time.DateTime.utc_now
 
             if is_running /\ _compiler_fingerprint? /\ now > _next_fingerprint_check then
                 _next_fingerprint_check = now.add_seconds(FINGERPRINT_CHECK_INTERVAL_SECONDS)

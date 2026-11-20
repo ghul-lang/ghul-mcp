@@ -1,6 +1,6 @@
 namespace Analyser is
-    use System.Exception
-    use System.Text.StringBuilder
+    use Ghul.Exception
+    use Text.StringBuilder
     use System.Text.Json.JsonDocument
     use System.Text.Json.JsonDocumentOptions
     use System.Text.Json.JsonCommentHandling
