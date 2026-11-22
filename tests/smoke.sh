@@ -399,6 +399,24 @@ await 60
 response 60 | grep -q 'not_declared_anywhere' || fail "manifest project: expected the source error from diagnostics, got: $(response 60)"
 response 60 | grep -q 'ghul.compiler [^ ]* (dotnet)' || fail "manifest project: expected the host on the version line, got: $(response 60)"
 
+# --- test root ------------------------------------------------------------
+
+# A directory holding a test.json is a ghul-test test: analysed on its own,
+# from the .ghul files in it, with the compiler the ghul-test.json above it
+# names, or the pinned tool where that names none.
+test_tree="$tmp/test-tree"
+test_root="$test_tree/tests/hello"
+mkdir -p "$test_root"
+cp -r .config "$test_tree/"
+(cd "$test_tree" && dotnet tool restore >/dev/null)
+echo '{ "default": "tool", "configurations": { "tool": { "compiler": "tool" } } }' > "$test_tree/ghul-test.json"
+echo '{}' > "$test_root/test.json"
+printf 'entry() is\n    IO.Std.write_line(only_in_the_test);\nsi\n' > "$test_root/test.ghul"
+
+send "{\"jsonrpc\":\"2.0\",\"id\":64,\"method\":\"tools/call\",\"params\":{\"name\":\"diagnostics\",\"arguments\":{\"project\":\"$test_root\"}}}"
+await 64
+response 64 | grep -q 'only_in_the_test' || fail "test root: expected the source error from diagnostics, got: $(response 64)"
+
 # --- .ghul-mcp.json -------------------------------------------------------
 
 # A directory holding both a .ghulproj and a manifest is opened through the
@@ -541,6 +559,9 @@ edit_hook() {
 
 hook_out=$(edit_hook Edit "$tmp/src/main.ghul")
 [ -z "$hook_out" ] || fail "edit hook: a clean file should report nothing, got: $hook_out"
+
+hook_out=$(edit_hook Edit "$test_root/test.ghul")
+echo "$hook_out" | grep -q 'test.ghul:[0-9]*:[0-9]*: error: .*only_in_the_test' || fail "edit hook: expected the test's own error, got: $hook_out"
 
 hook_out=$(edit_hook Edit "$hints_dir/src/wasm_only.ghul")
 echo "$hook_out" | grep -q 'not analysed by the dotnet compiler' || fail "edit hook: expected an excluded file to be reported as not analysed, got: $hook_out"

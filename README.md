@@ -63,6 +63,13 @@ analysed through the `ghul` command-line tool, which writes its response file
 and names its compiler (`ghul project response-file`, `ghul project compiler
 --json`).
 
+A directory with a `test.json` and neither of those is a
+[ghul-test](https://github.com/ghul-lang/ghul-test) test. It is analysed from
+the `.ghul` files directly in it, with no references named, so the compiler
+finds its own runtime. The compiler is the one the default configuration of
+the nearest `ghul-test.json` at or above it names, where that is a published
+compiler or a `.dll`, and the pinned `ghul.compiler` tool otherwise.
+
 A `.ghul-mcp.json` in the project directory or any directory above it changes
 that. The nearest one applies:
 
@@ -163,8 +170,8 @@ relaunch.
 
 `--edit-hook` is a Claude Code `PostToolUse` hook. It reads the hook payload
 on standard input, and for an `Edit` or `Write` of a `.ghul` file inside a
-project - the nearest directory above the file holding a `.ghulproj` or a
-`ghul-project.json` manifest - sends
+project - the nearest directory above the file holding a `.ghulproj`, a
+`ghul-project.json` manifest or a test's `test.json` - sends
 the edit to that project's pool host and writes the file's diagnostics as
 the context the agent is shown:
 

@@ -274,6 +274,10 @@ namespace Analyser is
             // The build's answer first: it sees a shared Directory.Build.props
             // and knows which patterns it actually compiles, where the project
             // file parse below sees neither.
+            if TEST_ROOT.is_test_root(_project_directory) then
+                return TEST_ROOT.sources(_project_directory)
+            fi
+
             let globs = published_source_globs() ?? load_ghulproj_source_globs()
 
             let seen = Collections.SET[string]()
@@ -531,6 +535,14 @@ namespace Analyser is
                 return "{config_text} ghul-project {_read_or_none(MANIFEST_PROJECT.MANIFEST)} {_read_or_none(MANIFEST_PROJECT.LOCKFILE)} {_program_stamp()}"
             fi
 
+            // A test's compiler is named by the ghul-test manifest above it.
+            if TEST_ROOT.is_test_root(_project_directory) then
+                let manifest = TEST_ROOT.find_manifest(_project_directory)
+                let text = if manifest? then File.read_all_text(manifest) else "none" fi
+
+                return "test {text} {_test_compiler_stamp()}"
+            fi
+
             // A preference that has not changed which route is taken still
             // counts, so that editing the file is always noticed.
             if config.path? then
@@ -558,6 +570,15 @@ namespace Analyser is
             fi
 
             return "program {_compiler_program ?? "none"}"
+        si
+
+        // The test compiler's path and write time, where there is one.
+        _test_compiler_stamp() -> string is
+            if let dll = TEST_ROOT.compiler_dll(_project_directory) then
+                return "dll {dll} {File.get_last_write_time_utc(dll).ticks}"
+            fi
+
+            return "tool {_ghulproj_fingerprint()}"
         si
 
         _ghulproj_fingerprint() -> string is
@@ -1152,11 +1173,15 @@ namespace Analyser is
             _config = MCP_CONFIG.load(_project_directory)
 
             let is_manifest_project = MANIFEST_PROJECT.is_manifest_project(_project_directory, _config.prefer_manifest)
+            let is_test_root = !is_manifest_project /\ TEST_ROOT.is_test_root(_project_directory)
 
+            // A test has no build to resolve its references: the compiler
+            // finds its own runtime and framework, as for any compile with
+            // none named.
             if is_manifest_project then
                 generate_manifest_response_file(project_response_file, source_globs_path)
                 read_response_file(project_response_file, arguments)
-            else
+            elif !is_test_root then
                 generate_response_file(project_response_file, source_globs_path)
 
                 if File.exists(project_response_file) then
@@ -1179,7 +1204,12 @@ namespace Analyser is
 
             let start_info = ProcessStartInfo()
 
-            _analyser_compiler_dll = resolve_analyser_compiler_dll()
+            _analyser_compiler_dll =
+                if is_test_root then
+                    TEST_ROOT.compiler_dll(_project_directory) ?? resolve_analyser_compiler_dll()
+                else
+                    resolve_analyser_compiler_dll()
+                fi
 
             let program mut = "ghul-compiler"
 

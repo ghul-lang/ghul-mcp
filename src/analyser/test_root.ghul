@@ -1,0 +1,159 @@
+namespace Analyser is
+    use System.Text.Json.JsonDocument
+    use System.Text.Json.JsonDocumentOptions
+    use System.Text.Json.JsonCommentHandling
+    use System.Text.Json.JsonElement
+    use System.Text.Json.JsonValueKind
+
+    use IO.Directory
+    use IO.File
+    use IO.Path
+
+    /// A test that ghul-test runs: a directory holding a `test.json`, with
+    /// neither a `.ghulproj` nor a `ghul-project.json` to say how it is built.
+    /// It is analysed on its own, from the `.ghul` files in its directory,
+    /// with the compiler ghul-test builds it with and the references that
+    /// compiler finds for itself.
+    class TEST_ROOT is
+        /// The file that makes a directory a test.
+        SETTINGS: string static => "test.json"
+
+        /// The ghul-test manifest at or above a test, naming its
+        /// configurations and the default one.
+        MANIFEST: string static => "ghul-test.json"
+
+        init() is si
+
+        /// Whether `directory` holds a test's settings.
+        has_settings(directory: string) -> bool static =>
+            File.exists(Path.combine(directory, SETTINGS))
+
+        /// Whether `directory` is a test and no project of another kind.
+        is_test_root(directory: string) -> bool static =>
+            has_settings(directory) /\
+            Directory.get_files(directory, "*.ghulproj").count == 0 /\
+            !File.exists(Path.combine(directory, MANIFEST_PROJECT.MANIFEST))
+
+        /// The test's sources, relative to its directory: the `.ghul` files
+        /// directly in it, as ghul-test builds it from.
+        sources(directory: string) -> Collections.LIST[string] static is
+            let result = Collections.LIST[string]()
+
+            for path in Directory.get_files(directory, "*.ghul") do
+                result.add(Path.get_file_name(path)!)
+            od
+
+            return result
+        si
+
+        /// The nearest `ghul-test.json` at or above `directory`, or null.
+        find_manifest(directory: string) -> string? static is
+            let current mut = Path.get_full_path(directory)
+
+            while current? do
+                let candidate = Path.combine(current, MANIFEST)
+
+                if File.exists(candidate) then
+                    return candidate
+                fi
+
+                current = Path.get_directory_name(current)
+            od
+
+            return null
+        si
+
+        /// The .NET compiler assembly ghul-test builds the test in `directory`
+        /// with by default: from the `compiler` of the default configuration
+        /// in the nearest `ghul-test.json`, or of the nearest configuration it
+        /// extends that names one, where that is a published compiler or a
+        /// `.dll`. Null otherwise, and the project's pinned compiler tool is
+        /// used.
+        compiler_dll(directory: string) -> string? static is
+            let manifest = find_manifest(directory)
+
+            if !manifest? then
+                return null
+            fi
+
+            try
+                let options = _[JsonDocumentOptions]
+
+                options.comment_handling = JsonCommentHandling.SKIP
+                options.allow_trailing_commas = true
+
+                let use document = JsonDocument.parse(File.read_all_text(manifest), options)
+                let root = document.root_element
+
+                let configurations: JsonElement mut
+
+                if root.value_kind != JsonValueKind.OBJECT \/ !root.try_get_property("configurations", configurations ref) then
+                    return null
+                fi
+
+                let base = Path.get_directory_name(manifest)!
+                let seen = Collections.LIST[string]()
+                let name mut = _string(root, "default")
+
+                while let wanted = name do
+                    let entry: JsonElement mut
+
+                    if seen.contains(wanted) \/ !configurations.try_get_property(wanted, entry ref) \/ entry.value_kind != JsonValueKind.OBJECT then
+                        return null
+                    fi
+
+                    seen.add(wanted)
+
+                    let compiler: JsonElement mut
+
+                    if entry.try_get_property("compiler", compiler ref) then
+                        return _dll_of(compiler, base)
+                    fi
+
+                    name = _string(entry, "extends")
+                od
+            catch ex: Ghul.Exception
+                IO.Std.error.write_line("ghul-mcp: could not read {manifest} for the compiler of the test in {directory}: {ex.message}")
+            yrt
+
+            return null
+        si
+
+        _dll_of(compiler: JsonElement, base: string) -> string? static is
+            if compiler.value_kind != JsonValueKind.OBJECT then
+                return null
+            fi
+
+            let references: JsonElement mut
+
+            if compiler.try_get_property("reference_assemblies", references ref) /\ references.value_kind == JsonValueKind.FALSE then
+                return null
+            fi
+
+            let candidate =
+                if let publish = _string(compiler, "publish") then
+                    Path.get_full_path(Path.combine([base, publish, "ghul.dll"]))
+                elif let path = _string(compiler, "path") /\ path.ends_with(".dll") then
+                    Path.get_full_path(Path.combine(base, path))
+                else
+                    null
+                fi
+
+            if let dll: string = candidate /\ File.exists(dll) then
+                return dll
+            fi
+
+            return null
+        si
+
+        _string(element: JsonElement, property: string) -> string? static is
+            let value: JsonElement mut
+
+            if element.try_get_property(property, value ref) /\ value.value_kind == JsonValueKind.STRING then
+                return value.get_string()
+            fi
+
+            return null
+        si
+    si
+si
