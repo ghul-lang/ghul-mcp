@@ -1269,7 +1269,7 @@ namespace Analyser is
 
             // Drain stderr in the background so a chatty analyser doesn't
             // fill its stderr pipe and block.
-            Tasks.TASK.run(
+            Concurrency.Future.run(
                 () is
                     try
                         do
@@ -1791,7 +1791,7 @@ namespace Analyser is
             let response: Response? mut = null
             let error: Exception? mut = null
 
-            let task = Tasks.TASK.run(
+            let task = Concurrency.Future.run(
                 () is
                     try
                         response = _read_response_unbounded()
