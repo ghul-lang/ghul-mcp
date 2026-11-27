@@ -177,7 +177,7 @@ send '{"jsonrpc":"2.0","id":10,"method":"tools/call","params":{"name":"hover_of"
 await 10
 response 10 | grep -q 'no symbol named' || fail "hover_of unknown: expected miss message"
 
-send '{"jsonrpc":"2.0","id":11,"method":"tools/call","params":{"name":"members","arguments":{"type":"System.Text.StringBuilder"}}}'
+send '{"jsonrpc":"2.0","id":11,"method":"tools/call","params":{"name":"members","arguments":{"type":"Text.StringBuilder"}}}'
 await 11
 response 11 | grep -q 'append' || fail "members(StringBuilder): expected append in members"
 response 11 | grep -q 'length' || fail "members(StringBuilder): expected length property"
